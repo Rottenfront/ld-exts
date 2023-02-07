@@ -23,7 +23,7 @@ use lady_deirdre::lexis::Token;
 #[define(BIN = ['0', '1', '_'])]
 #[define(OCT = ['0'..'7', '_'])]
 #[define(DEC = ['0'..'9', '_'])]
-#[define(HEX = DEC | ['A'..'F', 'a'..'f'])]
+#[define(HEX = DEC | ['A'..'F', 'a'..'f', '_'])]
 #[define(NUM_TYPES = ("i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "f32" | "f64"))]
 #[define(ESCAPE = '\\' & (['\'', '"', '\\', '/', 'b', 'f', 'n', 'r', 't', '\n', '0'] | ('x' & HEX & HEX)
 | ("u{" & HEX & HEX & HEX & HEX & '}')))]
@@ -82,26 +82,31 @@ pub enum RustToken {
 
     // IDENTIFIERS
 
+    #[precedence(3)]
+    #[rule(NUM_TYPES)]
     NumType,
+
+    #[precedence(3)]
+    #[rule("str" | "bool")]
     BasicType,
 
     #[precedence(3)]
-    #[rule("0b" & BIN+ & ('.' & BIN*)? & NUM_TYPES?)]
+    #[rule("0b" & BIN+ & ('.' & BIN+)? & NUM_TYPES?)]
     BinNumber,
 
     #[precedence(3)]
-    #[rule("0o" & OCT+ & ('.' & OCT*)? & NUM_TYPES?)]
+    #[rule("0o" & OCT+ & ('.' & OCT+)? & NUM_TYPES?)]
     OctNumber,
 
     #[precedence(2)]
-    #[rule(DEC+ & ('.' & DEC*)? & NUM_TYPES?)]
+    #[rule(DEC+ & ('.' & DEC+)? & NUM_TYPES?)]
     DecNumber,
 
     #[precedence(3)]
-    #[rule("0x" & HEX+ & ('.' & HEX*)? & NUM_TYPES?)]
+    #[rule("0x" & HEX+ & ('.' & HEX+)? & NUM_TYPES?)]
     HexNumber,
 
-    #[rule(('b'? & '"' & (ESCAPE | ^['"', '\\'])* & '"'))]
+    #[rule(('"' & (ESCAPE | ^['"', '\\'])* & '"'))]
     String,
 
     #[constructor(transform_ident)]
@@ -307,8 +312,6 @@ impl RustToken {
             "while"    => Self::KeywordWhile,
             "yield"    => Self::KeywordYield,
             "_"        => Self::Underscore,
-            "str" | "bool" => Self::BasicType,
-            "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "f32" | "f64" => Self::NumType,
             _ => Self::Identifier,
         }
     }
@@ -321,10 +324,10 @@ impl RustToken {
 /*
 struct S {}                  done
      struct S { x: T }       done
-     struct S(T);            done
+     struct S ​(T);            done
      struct S;               done
 enum E {}                    done
-     enum E { A, B(), C {} } done
+     enum E { A, B​(), C {} } done
      enum E { A = 1 }        done
 union U {}                   todo
 static X: T = T();           todo
@@ -336,7 +339,7 @@ S { x: y }
 S { x }
 S { ..s }
 S { 0: x }
-S(x)
+S​ (x)
 E::C { x: y }
 ()	Empty tuple
 (x)	Parenthesized expression.
@@ -357,10 +360,18 @@ a..
 s.x	Named field access
 s.0	Numbered field access
 
+trait T {}
+trait T : R {}
 impl S {}
 impl T for S {}
 impl !T for S {}
+fn f() {}
+     fn f() -> S {}
+     fn f(&self) {}
+struct S ​(T);
 const fn f() {}
+async fn f() {}
+     async fn f() -> S {}
      async { x }
 fn() -> S
 Fn() -> S
@@ -374,7 +385,10 @@ unsafe
      unsafe trait T {}
      unsafe { f(); }
      unsafe impl T for S {}	Guarantees S is well-behaved w.r.t T; people may use T on S safely.
+Control Flow
+Control execution within a function.
 
+Example	Explanation
 while x {}	Loop, REF run while expression x is true.
 loop {}	Loop indefinitely REF until break. Can yield value with break x.
 for x in collection {}	Syntactic sugar to loop over iterators. BK STD REF
@@ -406,23 +420,45 @@ x.f()	Call member function, requires f takes self, &self, … as first argument.
      T::f(&x)	Same as x.f() if X impl T, i.e., x.f() finds methods of T if in scope.
 X::f()	Call associated function, e.g., X::new().
      <X as T>::f()	Call trait method T::f() implemented for X.
+Organizing Code
+Segment projects into smaller units and minimize dependencies.
 
+Example	Explanation
+mod m {}
+mod m;
 a::b
      ::b
      crate::b
      self::b
      super::b
+use a::b;
+use a::{b, c};
+use a::b as x;
 use a::b as _;
+use a::*;
+pub use a::b;
+pub T
+     pub(crate) T
+     pub(super) T
+     pub(self) T
      pub(in a::b) T
 extern crate a;
 extern "C" {}
 extern "C" fn f() {}
+
+type T = S;
+Self
+self
+     &self
+     &mut self
      self: Box<Self>
 <S as T>
 a::b as c
 x as u32
 
 m!()
+#[attr]
+#![attr]
 
 $x:ty
 $x
@@ -473,20 +509,33 @@ _ => {}
 x @ 1..=5 => {}
      Err(x @ Error {..}) => {}
 S { x } if x > 10 => {}
+
+struct S<T>
+S<T> where T: R
+     where T: R, P: S
+     where T: R + S
      where T: R + 'a
      where T: ?Sized
      where T: 'a
      where T: 'static
      where 'b: 'a
      where u8: R<T>
+S<T: R>
 S<const N: usize>
      S<10>
      S<{5+5}>
+S<T = R>
      S<const N: u8 = 0>
      S<T = u8>
 S<'_>
 S<_>
 S::<T>
+trait T<X> {}
+trait T { type X; }
+trait T { type X<G>; }
+trait T { type X<'a>; }
+     type X = R;
+     type X<G> = R<G>;
 impl<T> S<T> {}
 impl S<T> {}
 fn f() -> impl T
@@ -496,6 +545,7 @@ fn f<X: T>(x: X)
 fn f() where Self: R;
      fn f() where Self: Sized;
      fn f() where Self: R {}
+
 for<'a>
      trait T: for<'a> R<'a> {}
 fn(&'a u8)
@@ -505,15 +555,45 @@ for<'a> fn(&'a u8)
 dyn for<'a> Fn(&'a u8)
      dyn Fn(&'_ u8)
      dyn Fn(&u8)
+
+
 impl<'a> T for fn(&'a u8) {}
 impl T for for<'a> fn(&'a u8) {}
      impl T for fn(&u8) {}
+
+"..."	            String literal
+     "\n\r\t\0\\"	Common escapes
+     "\x36"	        ASCII
+     "\u{7fff}"	    Unicode
+r"..."	Raw string literal
 r#"..."#	Raw string literal
-!
-     fn f() -> ! {}
-     fn f() -> Result<(), !> {}
-     fn f(x: !) {}
-_
-     let _ = x;
-     _ = x;
+b"..."	Byte string literal
+br"...", br#"..."#	Raw byte string literal
+'🦀'	Character literal
+b'x'	ASCII byte literal
+
+///
+//!
+//
+/* … */
+/** … */
+/*! … */
+
+Miscellaneous
+These sigils did not fit any other category but are good to know nonetheless.
+
+Example	Explanation
+!	Always empty never type. BK EX STD REF
+     fn f() -> ! {}	Function that never returns; compat. with any type e.g., let x: u8 = f();
+     fn f() -> Result<(), !> {}	Function that must return Result but signals it can never Err. 🚧
+     fn f(x: !) {}	Function that exists, but can never be called. Not very useful. 🝖 🚧
+_	Unnamed wildcard REF variable binding, e.g., |x, _| {}.
+     let _ = x;	Unnamed assignment is no-op, does not 🛑 move out x or preserve scope!
+     _ = x;	You can assign anything to _ without let, i.e., _ = ignore_error(); 1.59+ 🔥
+_x	Variable binding explicitly marked as unused.
+1_234_567	Numeric separator for visual clarity.
+1_u8	Type specifier for numeric literals EX REF (also i8, u16, …).
+0xBEEF, 0o777, 0b1001	Hexadecimal (0x), octal (0o) and binary (0b) integer literals.
+r#foo	A raw identifier BK EX for edition compatibility. 🝖
+x;	Statement REF terminator, c. expressions EX REF
 */

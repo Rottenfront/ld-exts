@@ -34,34 +34,30 @@ pub enum RustNode {
     #[rule(items: RootItem*)]
     Root { items: Vec<NodeRef> },
     #[rule((attrs: OuterAttr)* & (mods: KeywordPub)?
-    & (value: (StructDefConstruct | InnerAttr | EnumDefConstruct | UseConstruct
-            | FnDefConstruct | TypeDef | ModuleDef | TraitDef | ImplDef | StaticDef | ConstDef)))]
+    & (value: (StructDefConstruct | InnerAttr | EnumDefConstruct | UseConstruct | FnDefConstruct)))]
     RootItem {
         attrs: Vec<NodeRef>,
         mods: NodeRef,
         value: NodeRef,
     },
-    
-    #[rule($KeywordExtern & (lang: String) & ((items: RootItem) | ($BraceOpen & (items: RootItem)* & $BraceClose)))]
-    Extern,
 
     #[comment]
-    #[rule($SingleComment & (value: (ANY | $MultilineCommentClose)*))]
+    #[rule($SingleComment & (value: (ANY | $MultilineCommentClose)*) & $NewLine)]
     SingleComment { value: Vec<TokenRef> },
     #[comment]
-    #[rule($InnerSlComment & (value: (ANY | $MultilineCommentClose)*))]
+    #[rule($InnerSlComment & (value: (ANY | $MultilineCommentClose)*) & $NewLine)]
     InnerSlComment { value: Vec<TokenRef> },
     #[comment]
-    #[rule($OuterSlComment & (value: (ANY | $MultilineCommentClose)*))]
+    #[rule($OuterSlComment & (value: (ANY | $MultilineCommentClose)*) & $NewLine)]
     OuterSlComment { value: Vec<TokenRef> },
     #[comment]
-    #[rule($MultilineCommentOpen & (value: (ANY | $NewLine)*) & $MultilineCommentClose?)]
+    #[rule($MultilineCommentOpen & (value: (ANY | $NewLine)*) & $MultilineCommentClose)]
     MultilineComment { value: Vec<TokenRef> },
     #[comment]
-    #[rule($InnerMlCommentOpen & (value: (ANY | $NewLine)*) & $MultilineCommentClose?)]
+    #[rule($InnerMlCommentOpen & (value: (ANY | $NewLine)*) & $MultilineCommentClose)]
     InnerMlComment { value: Vec<TokenRef> },
     #[comment]
-    #[rule($OuterMlCommentOpen & (value: (ANY | $NewLine)*) & $MultilineCommentClose?)]
+    #[rule($OuterMlCommentOpen & (value: (ANY | $NewLine)*) & $MultilineCommentClose)]
     OuterMlComment { value: Vec<TokenRef> },
 
     #[rule($Hash & $BracketOpen & (items: (($ParenthesisOpen & ANY* & $ParenthesisClose) | ($BracketOpen & ANY* & $BracketClose)
@@ -75,8 +71,8 @@ pub enum RustNode {
         items: Vec<TokenRef>,
     },
 
-    #[rule(value: $String)]
-    String { value: TokenRef },
+    // #[rule(value: $String)]
+    // String { value: TokenRef },
     // #[rule(value: (($AsciiChar | $Apostrophe) & ANY? & $Apostrophe))]
     // Char { value: Vec<TokenRef> },
     #[rule((value: ($BinNumber | $OctNumber | $DecNumber | $HexNumber)) & (_type: $NumType)?)]
@@ -92,15 +88,17 @@ pub enum RustNode {
     #[rule($BraceOpen & $BraceClose)]
     CodeBlock,
 
-    #[rule($KeywordPub & ($ParenthesisOpen & (pub_for: ($KeywordSelf | $KeywordMod | $KeywordCrate)) & $ParenthesisClose))]
+    #[rule($KeywordPub & ($ParenthesisOpen & (pub_for: ($KeywordSelf | $KeywordMod | $KeywordCrate))
+    & $ParenthesisClose))]
     KeywordPub { pub_for: TokenRef },
     #[rule(value: ($BasicType | $NumType))]
     BasicType { value: TokenRef },
     #[rule((value: $DoubleColon)? & (value: (($KeywordCrate | $Identifier | $KeywordSuper) & $DoubleColon))*
     & (value: ($KeywordCrate | $Identifier | $KeywordSuper)))]
     UseType { value: Vec<TokenRef> },
-    #[rule((value: (BasicType | UseType)) & (generic: UseGeneric)?)]
+    #[rule((refer: Reference) & (value: (BasicType | UseType)) & (generic: UseGeneric)?)]
     Type {
+        refer: NodeRef,
         value: NodeRef,
         generic: NodeRef,
     },
@@ -205,22 +203,18 @@ pub enum RustNode {
     #[rule(refer: (($Amp | $Star) & $KeywordMut?))]
     Reference { refer: Vec<TokenRef> },
 
-    #[rule((name: $Identifier) & $Colon & (refer: Reference)? & (_type: Type))]
+    #[rule((name: $Identifier) & $Colon & (_type: Type))]
     FnParameter {
         name: TokenRef,
-        refer: NodeRef,
         _type: NodeRef,
     },
-    #[rule((refer: Reference)? & $KeywordSelf)]
-    SelfKwUse { refer: NodeRef },
-    #[rule((parent: Type) & $ParenthesisOpen & (name: $Identifier) & $ParenthesisClose & $Colon & (refer: Reference)? & (_type: Type))]
+    #[rule((parent: Type) & $ParenthesisOpen & (name: $Identifier) & $ParenthesisClose & $Colon & (_type: Type))]
     FnParameterWithParent {
         parent: NodeRef,
         name: TokenRef,
-        refer: NodeRef,
         _type: NodeRef,
     },
-    #[rule((attrs: OuterAttr)* & (value: (FnParameter | FnParameterWithParent | SelfKwUse)))]
+    #[rule((attrs: OuterAttr)* & (value: (FnParameter | FnParameterWithParent)))]
     FnParameterConstruct {
         attrs: Vec<NodeRef>,
         value: NodeRef,
@@ -241,59 +235,4 @@ pub enum RustNode {
         where_cond: NodeRef,
         code: NodeRef,
     },
-
-    #[rule($KeywordMod & (name: $Identifier) & ($Semicolon | ($BraceOpen & (items: RootItem*) & $BraceOpen)))]
-    ModuleDef {
-        name: TokenRef,
-        items: Vec<NodeRef>,
-    },
-
-    #[rule($Assign & (_type: Type))]
-    TypeSetDef { _type: NodeRef },
-    #[rule($KeywordType & (name: Type) & (set: TypeSetDef)? & $Semicolon)]
-    TypeDef {
-        name: NodeRef,
-        set: NodeRef,
-    },
-
-    #[rule($Comma & ((traits: Type) & $Add)* & (traits: Type))]
-    TraitInherit { traits: Vec<NodeRef> },
-    #[rule($KeywordTrait & (name: $Identifier) & (generic: DefGeneric)? & (inherit: TraitInherit)?
-    & (where_cond: Where)? & $BraceOpen & (items: (FnDefConstruct | TypeDef))* & $BraceClose)]
-    TraitDef {
-        name: TokenRef,
-        generic: NodeRef,
-        inherit: NodeRef,
-        where_cond: NodeRef,
-        items: Vec<NodeRef>,
-    },
-
-    #[rule($KeywordImpl & (generic1: DefGeneric)? & (name: Type) & (generic2: DefGeneric)? & (inherit: TraitInherit)?
-        & (where_cond: Where)? & $BraceOpen & (items: (TypeDef | FnDefConstruct))* & $BraceClose)]
-    ImplDef {
-        generic1: NodeRef,
-        generic2: NodeRef,
-        where_cond: NodeRef,
-        name: NodeRef,
-        inherit: NodeRef,
-        items: Vec<NodeRef>,
-    },
-
-    #[rule($Identifier)]
-    Expression,
-
-    #[rule($KeywordConst & (name: $Identifier) & $Colon & (_type: Type) & $Assign & (value: Expression) & $Semicolon)]
-    ConstDef {
-        name: TokenRef,
-        _type: NodeRef,
-        value: NodeRef,
-    },
-
-    #[rule($KeywordStatic & (name: $Identifier) & $Colon & (_type: Type) & $Assign & (value: Expression) & $Semicolon)]
-    StaticDef {
-        name: TokenRef,
-        _type: NodeRef,
-        value: NodeRef,
-    },
-    
 }
