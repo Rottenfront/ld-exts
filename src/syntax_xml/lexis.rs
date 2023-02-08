@@ -27,33 +27,25 @@ use lady_deirdre::lexis::Token;
       ['"', '\\', '/', 'b', 'f', 'n', 'r', 't']
     | ('u' & HEX & HEX & HEX & HEX)
 ))]
-pub enum JsonToken {
-    #[rule("true")]
-    True,
+#[define(LETTER = ^['@', '~', '$', '!', '#', '%', '^', '&', '*', '(', ')', '-',
+'=', '+', '[', ']', '{', '}', '\\', '|', ';', ':', '\'', '"', ',', '<', '.', '>',
+'/', '?', '\r', '\t', '\n', ' ', '\x0b', '\x0c'])]
+pub enum XmlToken {
+    #[rule(LETTER+)]
+    Identifier,
 
-    #[rule("false")]
-    False,
+    // BRACKETS
+    #[rule('(')]
+    ParenthesisOpen,
 
-    #[rule("null")]
-    Null,
+    #[rule(')')]
+    ParenthesisClose,
 
-    #[rule('{')]
-    BraceOpen,
+    #[rule('<')]
+    AngleBracketOpen,
 
-    #[rule('}')]
-    BraceClose,
-
-    #[rule('[')]
-    BracketOpen,
-
-    #[rule(']')]
-    BracketClose,
-
-    #[rule(',')]
-    Comma,
-
-    #[rule(':')]
-    Colon,
+    #[rule('>')]
+    AngleBracketClose,
 
     #[rule('"' & (ESCAPE | ^['"', '\\'])* & '"')]
     String,
