@@ -81,7 +81,6 @@ pub enum RustToken {
     KeywordMacroRules,
 
     // IDENTIFIERS
-
     #[precedence(3)]
     #[rule(NUM_TYPES)]
     NumType,
@@ -114,7 +113,6 @@ pub enum RustToken {
     Identifier,
 
     // BRACKETS
-
     #[rule('(')]
     ParenthesisOpen,
 
@@ -140,7 +138,6 @@ pub enum RustToken {
     BracketClose,
 
     // CHARACTERS
-
     Underscore,
 
     #[rule(',')]
@@ -232,30 +229,13 @@ pub enum RustToken {
     NewLine,
 
     // COMMENTS
-
-    #[precedence(4)]
+    #[precedence(5)]
     #[rule("//")]
     SingleComment,
 
     #[precedence(5)]
-    #[rule("//!")]
-    InnerSlComment,
-
-    #[precedence(5)]
-    #[rule("///")]
-    OuterSlComment,
-
-    #[precedence(4)]
     #[rule("/*")]
     MultilineCommentOpen,
-
-    #[precedence(5)]
-    #[rule("/*!")]
-    InnerMlCommentOpen,
-
-    #[precedence(5)]
-    #[rule("/**")]
-    OuterMlCommentOpen,
 
     #[precedence(5)]
     #[rule("*/")]
@@ -268,50 +248,50 @@ pub enum RustToken {
 impl RustToken {
     fn transform_ident(string: &str) -> Self {
         match string {
-            "as"       => Self::KeywordAs,
-            "async"    => Self::KeywordAsync,
-            "await"    => Self::KeywordAwait,
-            "break"    => Self::KeywordBreak,
-            "const"    => Self::KeywordConst,
+            "as" => Self::KeywordAs,
+            "async" => Self::KeywordAsync,
+            "await" => Self::KeywordAwait,
+            "break" => Self::KeywordBreak,
+            "const" => Self::KeywordConst,
             "continue" => Self::KeywordContinue,
-            "crate"    => Self::KeywordCrate,
-            "do"       => Self::KeywordDo,
-            "dyn"      => Self::KeywordDyn,
-            "else"     => Self::KeywordElse,
-            "enum"     => Self::KeywordEnum,
-            "extern"   => Self::KeywordExtern,
-            "false"    => Self::KeywordFalse,
-            "fn"       => Self::KeywordFn,
-            "for"      => Self::KeywordFor,
-            "if"       => Self::KeywordIf,
-            "impl"     => Self::KeywordImpl,
-            "in"       => Self::KeywordIn,
-            "let"      => Self::KeywordLet,
-            "loop"     => Self::KeywordLoop,
-            "macro"    => Self::KeywordMacro,
-            "match"    => Self::KeywordMatch,
-            "mod"      => Self::KeywordMod,
-            "move"     => Self::KeywordMove,
-            "mut"      => Self::KeywordMut,
-            "pub"      => Self::KeywordPub,
-            "ref"      => Self::KeywordRef,
-            "return"   => Self::KeywordReturn,
-            "self"     => Self::KeywordSelf,
-            "Self"     => Self::KeywordUSelf,
-            "static"   => Self::KeywordStatic,
-            "struct"   => Self::KeywordStruct,
-            "super"    => Self::KeywordSuper,
-            "trait"    => Self::KeywordTrait,
-            "true"     => Self::KeywordTrue,
-            "try"      => Self::KeywordTry,
-            "type"     => Self::KeywordType,
-            "union"    => Self::KeywordUnion,
-            "unsafe"   => Self::KeywordUnsafe,
-            "use"      => Self::KeywordUse,
-            "where"    => Self::KeywordWhere,
-            "while"    => Self::KeywordWhile,
-            "yield"    => Self::KeywordYield,
-            "_"        => Self::Underscore,
+            "crate" => Self::KeywordCrate,
+            "do" => Self::KeywordDo,
+            "dyn" => Self::KeywordDyn,
+            "else" => Self::KeywordElse,
+            "enum" => Self::KeywordEnum,
+            "extern" => Self::KeywordExtern,
+            "false" => Self::KeywordFalse,
+            "fn" => Self::KeywordFn,
+            "for" => Self::KeywordFor,
+            "if" => Self::KeywordIf,
+            "impl" => Self::KeywordImpl,
+            "in" => Self::KeywordIn,
+            "let" => Self::KeywordLet,
+            "loop" => Self::KeywordLoop,
+            "macro" => Self::KeywordMacro,
+            "match" => Self::KeywordMatch,
+            "mod" => Self::KeywordMod,
+            "move" => Self::KeywordMove,
+            "mut" => Self::KeywordMut,
+            "pub" => Self::KeywordPub,
+            "ref" => Self::KeywordRef,
+            "return" => Self::KeywordReturn,
+            "self" => Self::KeywordSelf,
+            "Self" => Self::KeywordUSelf,
+            "static" => Self::KeywordStatic,
+            "struct" => Self::KeywordStruct,
+            "super" => Self::KeywordSuper,
+            "trait" => Self::KeywordTrait,
+            "true" => Self::KeywordTrue,
+            "try" => Self::KeywordTry,
+            "type" => Self::KeywordType,
+            "union" => Self::KeywordUnion,
+            "unsafe" => Self::KeywordUnsafe,
+            "use" => Self::KeywordUse,
+            "where" => Self::KeywordWhere,
+            "while" => Self::KeywordWhile,
+            "yield" => Self::KeywordYield,
+            "_" => Self::Underscore,
             _ => Self::Identifier,
         }
     }
@@ -393,39 +373,34 @@ while x {}	Loop, REF run while expression x is true.
 loop {}	Loop indefinitely REF until break. Can yield value with break x.
 for x in collection {}	Syntactic sugar to loop over iterators. BK STD REF
      collection.into_iter()	Effectively converts any IntoIterator STD type into proper iterator first.
-     iterator.next()	On proper Iterator STD then x = next() until exhausted (first None).
-if x {} else {}	Conditional branch REF if expression is true.
-'label: {}	Block label, RFC can be used with break to exit out of this block. 1.65+
-'label: loop {}	Similar loop label, EX REF useful for flow control in nested loops.
-break	Break expression REF to exit a labelled block or loop.
-     break 'label x	Break out of block or loop named 'label and make x its value.
-     break 'label	Same, but don't produce any value.
-     break x	Make x value of the innermost loop (only in actual loop).
-continue	Continue expression REF to the next loop iteration of this loop.
-continue 'label	Same but instead of this loop, enclosing loop marked with 'label.
-x?	If x is Err or None, return and propagate. BK EX STD REF
-x.await	Syntactic sugar to get future, poll, yield. REF '18 Only works inside async.
-     x.into_future()	Effectively converts any IntoFuture STD type into proper future first.
-     future.poll()	On proper Future STD then poll() and yield flow if Poll::Pending. STD
-return x	Early return REF from function. More idiomatic is to end with expression.
-     { return }	Inside normal {}-blocks return exits surrounding function.
-     || { return }	Within closures return exits that closure only, i.e., closure is s. function.
-     async { return }	Inside async a return only REF 🛑 exits that {}, i.e., async {} is s. function.
-f()	Invoke callable f (e.g., a function, closure, function pointer, Fn, …).
-x.f()	Call member function, requires f takes self, &self, … as first argument.
-     X::f(x)	Same as x.f(). Unless impl Copy for X {}, f can only be called once.
-     X::f(&x)	Same as x.f().
-     X::f(&mut x)	Same as x.f().
-     S::f(&x)	Same as x.f() if X derefs to S, i.e., x.f() finds methods of S.
-     T::f(&x)	Same as x.f() if X impl T, i.e., x.f() finds methods of T if in scope.
-X::f()	Call associated function, e.g., X::new().
-     <X as T>::f()	Call trait method T::f() implemented for X.
-Organizing Code
-Segment projects into smaller units and minimize dependencies.
+     iterator.next()
+if x {} else {}
+'label: {}
+'label: loop {}
+break
+     break 'label x
+     break 'label
+     break x
+continue
+continue 'label
+x?
+x.await
+     x.into_future()
+     future.poll()
+return x
+     { return }
+     || { return }
+     async { return }
+f()
+x.f()
+     X::f(x)
+     X::f(&x)
+     X::f(&mut x)
+     S::f(&x)
+     T::f(&x)
+X::f()
+     <X as T>::f()
 
-Example	Explanation
-mod m {}
-mod m;
 a::b
      ::b
      crate::b
@@ -560,29 +535,7 @@ dyn for<'a> Fn(&'a u8)
 impl<'a> T for fn(&'a u8) {}
 impl T for for<'a> fn(&'a u8) {}
      impl T for fn(&u8) {}
-
-"..."	            String literal
-     "\n\r\t\0\\"	Common escapes
-     "\x36"	        ASCII
-     "\u{7fff}"	    Unicode
-r"..."	Raw string literal
 r#"..."#	Raw string literal
-b"..."	Byte string literal
-br"...", br#"..."#	Raw byte string literal
-'🦀'	Character literal
-b'x'	ASCII byte literal
-
-///
-//!
-//
-/* … */
-/** … */
-/*! … */
-
-Miscellaneous
-These sigils did not fit any other category but are good to know nonetheless.
-
-Example	Explanation
 !	Always empty never type. BK EX STD REF
      fn f() -> ! {}	Function that never returns; compat. with any type e.g., let x: u8 = f();
      fn f() -> Result<(), !> {}	Function that must return Result but signals it can never Err. 🚧
@@ -590,10 +543,6 @@ Example	Explanation
 _	Unnamed wildcard REF variable binding, e.g., |x, _| {}.
      let _ = x;	Unnamed assignment is no-op, does not 🛑 move out x or preserve scope!
      _ = x;	You can assign anything to _ without let, i.e., _ = ignore_error(); 1.59+ 🔥
-_x	Variable binding explicitly marked as unused.
-1_234_567	Numeric separator for visual clarity.
-1_u8	Type specifier for numeric literals EX REF (also i8, u16, …).
-0xBEEF, 0o777, 0b1001	Hexadecimal (0x), octal (0o) and binary (0b) integer literals.
-r#foo	A raw identifier BK EX for edition compatibility. 🝖
 x;	Statement REF terminator, c. expressions EX REF
 */
+
