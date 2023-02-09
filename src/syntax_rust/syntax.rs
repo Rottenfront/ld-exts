@@ -27,8 +27,8 @@ use std::vec::Vec;
 #[token(super::lexis::RustToken)]
 #[error(lady_deirdre::syntax::SyntaxError)]
 #[skip($Whitespace | $NewLine)]
-#[define(ARRAY_ITEM = Preprocessor)]
-#[define(ANY = $BasicType)]
+#[define(ANY = ($BasicType))]
+#[define(PATH_ITEM = ($Identifier | $KeywordSelf | $KeywordUSelf | $KeywordCrate | $KeywordSuper))]
 pub enum RustNode {
     // Root
     #[root]
@@ -37,7 +37,7 @@ pub enum RustNode {
 
     #[rule((attrs: AttrOuter)* & (mods: KeywordPub)?
     & (value: (StructDefConstruct | AttrInner | EnumDefConstruct | UseConstruct | FnDefConstruct
-        | TraitDef | ImplStatement | TypeDef | ModuleDef | TraitDef | ImplStatement)))]
+        | TraitDef | ImplStatement | TypeDef | ModuleDef | TraitDef | ImplStatement | Extern)))]
     RootItem {
         attrs: Vec<NodeRef>,
         mods: NodeRef,
@@ -53,32 +53,27 @@ pub enum RustNode {
     | ($BraceOpen & ANY* & $BraceClose) | ANY))* & $BracketClose)]
     AttrOuter { items: Vec<TokenRef> },
 
-
     // B
     #[rule(value: ($BasicType | $NumType))]
     BasicType { value: TokenRef },
-
 
     // C
     // #[rule(value: (($AsciiChar | $Apostrophe) & ANY? & $Apostrophe))]
     // Char {
     //     value: Vec<TokenRef>,
     // },
-
     #[rule($BraceOpen & $BraceClose)]
     CodeBlock,
 
     #[comment]
-    #[rule($SingleComment & (value: (ANY | $MultilineCommentClose)*) & $NewLine)]
+    #[rule($SingleComment & (value: (ANY | $MultilineCommentClose)*))]
     CommentSingle { value: Vec<TokenRef> },
 
     #[comment]
-    #[rule($MultilineCommentOpen & (value: (ANY | $NewLine)*) & $MultilineCommentClose)]
+    #[rule($MultilineCommentOpen & (value: (ANY | $NewLine)*) & $MultilineCommentClose?)]
     CommentMultiline { value: Vec<TokenRef> },
 
-
     // D
-
 
     // E
     #[rule((attrs: AttrOuter)* & (name: $Identifier) & (additional: (EnumItemAnonFields | EnumItemFields))?
@@ -107,11 +102,12 @@ pub enum RustNode {
         items: Vec<NodeRef>,
     },
 
+    #[rule($KeywordExtern & (lang: String) & (value: (ModuleBlock | RootItem)))]
+    Extern { lang: NodeRef, value: NodeRef },
 
     // F
     // #[rule($KeywordFalse)]
     // False,
-
     #[rule((name: $Identifier) & $Colon & (_type: Type))]
     FnParameter { name: TokenRef, _type: NodeRef },
 
@@ -140,7 +136,6 @@ pub enum RustNode {
         code: NodeRef,
     },
 
-
     // G
     #[rule($AngleBracketOpen & (items: TypeForGeneric)+{$Comma} & $AngleBracketOpen)]
     GenericDef { items: Vec<NodeRef> },
@@ -148,9 +143,7 @@ pub enum RustNode {
     #[rule($AngleBracketOpen & (items: (Type | SetType))+{$Comma} & $AngleBracketOpen)]
     GenericUse { items: Vec<NodeRef> },
 
-
     // H
-
 
     // I
     #[rule($KeywordImpl & (_type: Type) & ($KeywordFor & (for_t: Type))?
@@ -161,18 +154,13 @@ pub enum RustNode {
         code: NodeRef,
     },
 
-
     // J
 
-
     // K
-    #[rule($KeywordPub & ($ParenthesisOpen & (pub_for: ($KeywordSelf | $KeywordMod | $KeywordCrate))
-    & $ParenthesisClose))]
-    KeywordPub { pub_for: TokenRef },
-
+    #[rule($KeywordPub & ($ParenthesisOpen & (pub_for: Path) & $ParenthesisClose))]
+    KeywordPub { pub_for: NodeRef },
 
     // L
-
 
     // M
     #[rule($BraceOpen & ((items: RootItem) | (inner_attrs: AttrInner))* & $BraceClose)]
@@ -182,37 +170,30 @@ pub enum RustNode {
     },
 
     #[rule($KeywordMod & (name: $Identifier) & (code: (Semicolon | ModuleBlock)))]
-    ModuleDef {
-        name: TokenRef,
-        code: NodeRef,
-    },
-
+    ModuleDef { name: TokenRef, code: NodeRef },
 
     // N
-    #[rule((value: ($BinNumber | $OctNumber | $DecNumber | $HexNumber)) & (_type: $NumType)?)]
-    Number { value: TokenRef, _type: TokenRef },
-
+    #[rule(value: ($BinNumber | $OctNumber | $DecNumber | $HexNumber))]
+    Number { value: TokenRef },
 
     // O
 
-
     // P
-
+    #[rule((is_absolute: $DoubleColon)? &((path: PATH_ITEM) & $DoubleColon)* & (path: PATH_ITEM))]
+    Path {
+        is_absolute: TokenRef,
+        path: Vec<TokenRef>,
+    },
 
     // Q
-
 
     // R
     #[rule(refer: (($Amp | $Star) & $KeywordMut?))]
     Reference { refer: Vec<TokenRef> },
 
-
     // S
-    // #[rule(value: $String)]
-    // String {
-    //     value: TokenRef,
-    // },
-
+    #[rule(value: $String)]
+    String { value: TokenRef },
     #[rule($Semicolon)]
     Semicolon,
 
@@ -248,11 +229,9 @@ pub enum RustNode {
     #[rule((refer: Reference)? & $KeywordSelf)]
     SelfUse { refer: NodeRef },
 
-
     // T
     // #[rule($KeywordTrue)]
     // True,
-
     #[rule((value: (BasicType | UseType)) & (generic: GenericUse)?)]
     Type { value: NodeRef, generic: NodeRef },
 
@@ -263,14 +242,14 @@ pub enum RustNode {
         _type: Vec<NodeRef>,
     },
 
-    #[rule((attrs: AttrOuter)* & (name: $Identifier)+{$DoubleColon} & $Colon & (_type: Type)+{$Add})]
+    #[rule((attrs: AttrOuter)* & (name: Path) & $Colon & ((_type: Type) & $Add)* & (_type: Type))]
     TypeForWhere {
         attrs: Vec<NodeRef>,
-        name: Vec<TokenRef>,
+        name: NodeRef,
         _type: Vec<NodeRef>,
     },
 
-    #[rule($Colon & (traits: Type)+{$Add})]
+    #[rule($Colon & ((traits: Type) & $Add)* & (traits: Type))]
     TraitInherit { traits: Vec<NodeRef> },
 
     #[rule($KeywordTrait & (name: $Identifier) & (generic: GenericDef)?
@@ -283,8 +262,7 @@ pub enum RustNode {
         code: NodeRef,
     },
 
-    #[rule($KeywordType & (name: $Identifier) & (generic: GenericDef)
-    & ($Assign & set: Type)?)]
+    #[rule($KeywordType & (name: $Identifier) & (generic: GenericDef) & ($Assign & set: Type)?)]
     TypeDef {
         name: TokenRef,
         generic: NodeRef,
@@ -304,11 +282,9 @@ pub enum RustNode {
         inner_attrs: Vec<NodeRef>,
     },
 
-
     // U
-    #[rule((value: $DoubleColon)? & (value: (($KeywordCrate | $Identifier | $KeywordSuper) & $DoubleColon))*
-    & (value: ($KeywordCrate | $Identifier | $KeywordSuper)))]
-    UseType { value: Vec<TokenRef> },
+    #[rule(path: Path)]
+    UseType { path: NodeRef },
 
     #[rule($BraceOpen & (inner: UseStatementConstruct)*{$Comma} & $BraceClose)]
     UseBlock { inner: Vec<NodeRef> },
@@ -319,30 +295,122 @@ pub enum RustNode {
     #[rule($KeywordAs & (name: $Identifier))]
     UseStatementAs { name: TokenRef },
 
-    #[rule(((prefix: ($Identifier | $KeywordCrate | $KeywordSuper)) & $DoubleColon)
-    & (prefix: ($Identifier | $KeywordCrate | $KeywordSuper)) & (additional: UseStatementBlock | UseStatementAs)?)]
-    UseStatementConstruct {
-        prefix: Vec<TokenRef>,
-        additional: NodeRef,
-    },
+    #[rule((path: Path) & (additional: UseStatementBlock | UseStatementAs)?)]
+    UseStatementConstruct { path: NodeRef, additional: NodeRef },
 
     #[rule($KeywordUse & (st: UseStatementConstruct))]
     UseConstruct { st: NodeRef },
 
-
     // V
-
 
     // W
     #[rule($KeywordWhere & (items: TypeForWhere)+{$Comma})]
     Where { items: Vec<NodeRef> },
-
-
     // X
-
 
     // Y
 
-
     // Z
 }
+
+/*
+KeywordAs
+    KeywordAsync
+    KeywordAwait
+    KeywordBreak
+    KeywordConst
+    KeywordContinue
+    KeywordCrate
+    KeywordDo
+    KeywordDyn
+    KeywordElse
+    KeywordEnum
+    KeywordExtern
+    KeywordFalse
+    KeywordFn
+    KeywordFor
+    KeywordIf
+    KeywordImpl
+    KeywordIn
+    KeywordLet
+    KeywordLoop
+    KeywordMacro
+    KeywordMatch
+    KeywordMod
+    KeywordMove
+    KeywordMut
+    KeywordPub
+    KeywordRef
+    KeywordReturn
+    KeywordSelf
+    KeywordUSelf
+    KeywordStatic
+    KeywordStruct
+    KeywordSuper
+    KeywordTrait
+    KeywordTrue
+    KeywordTry
+    KeywordType
+    KeywordUnion
+    KeywordUnsafe
+    KeywordUse
+    KeywordWhere
+    KeywordWhile
+    KeywordYield
+    KeywordMacroRules
+    NumType
+    BasicType
+
+    #[precedence(3)]
+    #[rule("0b" & BIN+ & ('.' & BIN+)? & NUM_TYPES?)]
+    BinNumber,
+
+    #[precedence(3)]
+    #[rule("0o" & OCT+ & ('.' & OCT+)? & NUM_TYPES?)]
+    OctNumber,
+
+    #[precedence(2)]
+    #[rule(DEC+ & ('.' & DEC+)? & NUM_TYPES?)]
+    DecNumber
+    HexNumber
+    String
+    Identifier
+    ParenthesisOpen
+    ParenthesisClose
+    AngleBracketOpen
+    AngleBracketClose
+    BraceOpen
+    BraceClose
+    BracketOpen
+    BracketClose
+    Underscore
+    Comma
+    Point
+    Range
+    Apostrophe
+    AsciiChar
+    DoubleColon
+    Colon
+    Dollar
+    Semicolon
+    Operator
+    Add
+    Assign
+    Amp
+    Star
+    Slash
+    Tilda
+    At
+    Backslash
+    Escape
+    Bang
+    QuestMark
+    Hash
+    HashBang
+    Arrow
+    AssignWithOperation
+    Whitespace
+    NewLine
+    SingleComment
+    MultilineCommentOpen
+ */

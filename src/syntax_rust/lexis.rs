@@ -90,11 +90,11 @@ pub enum RustToken {
     BasicType,
 
     #[precedence(3)]
-    #[rule("0b" & BIN+ & ('.' & BIN+)? & NUM_TYPES?)]
+    #[rule("0b" & ['0', '1', '_']+ & NUM_TYPES?)]
     BinNumber,
 
     #[precedence(3)]
-    #[rule("0o" & OCT+ & ('.' & OCT+)? & NUM_TYPES?)]
+    #[rule("0o" & ['0'..'7', '_']+ & NUM_TYPES?)]
     OctNumber,
 
     #[precedence(2)]
@@ -102,7 +102,7 @@ pub enum RustToken {
     DecNumber,
 
     #[precedence(3)]
-    #[rule("0x" & HEX+ & ('.' & HEX+)? & NUM_TYPES?)]
+    #[rule("0x" & ['0'..'9', 'a'..'f', 'A'..'F', '_']+ & NUM_TYPES?)]
     HexNumber,
 
     #[rule(('"' & (ESCAPE | ^['"', '\\'])* & '"'))]
@@ -545,4 +545,3 @@ _	Unnamed wildcard REF variable binding, e.g., |x, _| {}.
      _ = x;	You can assign anything to _ without let, i.e., _ = ignore_error(); 1.59+ 🔥
 x;	Statement REF terminator, c. expressions EX REF
 */
-
