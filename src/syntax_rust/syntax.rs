@@ -27,30 +27,54 @@ use std::vec::Vec;
 #[token(super::lexis::RustToken)]
 #[error(lady_deirdre::syntax::SyntaxError)]
 #[skip($Whitespace | $NewLine)]
-#[define(ANY = ($BasicType))]
-#[define(PATH_ITEM = ($Identifier | $KeywordSelf | $KeywordUSelf | $KeywordCrate | $KeywordSuper))]
+#[define(ANY = ($KeywordAs | $KeywordAsync | $KeywordAwait | $KeywordBreak | $KeywordConst | $KeywordContinue
+| $KeywordCrate | $KeywordDo | $KeywordDyn | $KeywordElse | $KeywordEnum | $KeywordExtern | $KeywordFalse
+| $KeywordFn | $KeywordFor | $KeywordIf | $KeywordImpl | $KeywordIn | $KeywordLet | $KeywordLoop | $KeywordMacro
+| $KeywordMatch | $KeywordMod | $KeywordMove | $KeywordMut | $KeywordPub | $KeywordRef | $KeywordReturn
+| $KeywordSelf | $KeywordUSelf | $KeywordStatic | $KeywordStruct | $KeywordSuper | $KeywordTrait | $KeywordTrue
+| $KeywordTry | $KeywordType | $KeywordUnion | $KeywordUnsafe | $KeywordUse | $KeywordWhere | $KeywordWhile
+| $KeywordYield | $KeywordMacroRules | $NumType | $BasicType | $BinNumber | $OctNumber | $DecNumber | $HexNumber
+| $String | $Identifier | $ParenthesisOpen | $ParenthesisClose | $AngleBracketOpen | $AngleBracketClose | $BraceOpen
+| $BraceClose | $BracketOpen | $BracketClose | $Underscore | $Comma | $Point | $Range | $Apostrophe | $AsciiChar
+| $DoubleColon | $Colon | $Dollar | $Semicolon | $Operator | $Add | $Assign | $Amp | $Star | $Slash | $Tilda | $At
+| $Backslash | $Escape | $Bang | $QuestMark | $Hash | $HashBang | $Arrow | $AssignWithOperation | $Whitespace
+| $SingleComment | $MultilineCommentOpen))]
+#[define(ATTR_ITEM = ($KeywordAs | $KeywordAsync | $KeywordAwait | $KeywordBreak | $KeywordConst | $KeywordContinue
+| $KeywordCrate | $KeywordDo | $KeywordDyn | $KeywordElse | $KeywordEnum | $KeywordExtern | $KeywordFalse
+| $KeywordFn | $KeywordFor | $KeywordIf | $KeywordImpl | $KeywordIn | $KeywordLet | $KeywordLoop | $KeywordMacro
+| $KeywordMatch | $KeywordMod | $KeywordMove | $KeywordMut | $KeywordPub | $KeywordRef | $KeywordReturn
+| $KeywordSelf | $KeywordUSelf | $KeywordStatic | $KeywordStruct | $KeywordSuper | $KeywordTrait | $KeywordTrue
+| $KeywordTry | $KeywordType | $KeywordUnion | $KeywordUnsafe | $KeywordUse | $KeywordWhere | $KeywordWhile
+| $KeywordYield | $KeywordMacroRules | $NumType | $BasicType | $BinNumber | $OctNumber | $DecNumber | $HexNumber
+| $String | $Identifier | $Underscore | $Comma | $Point | $Range | $Apostrophe | $AsciiChar | $DoubleColon | $Colon
+| $Dollar | $Semicolon | $Operator | $Add | $Assign | $Amp | $Star | $Slash | $Tilda | $At | $Backslash | $Escape
+| $Bang | $QuestMark | $Hash | $HashBang | $Arrow | $AssignWithOperation | $Whitespace | $NewLine | $SingleComment
+| $MultilineCommentOpen))]
+#[define(PATH_ITEM = ($Identifier | $KeywordSelf | $KeywordUSelf | $KeywordCrate | $KeywordSuper | $Star))]
 pub enum RustNode {
     // Root
     #[root]
     #[rule(items: RootItem*)]
     Root { items: Vec<NodeRef> },
 
-    #[rule((attrs: AttrOuter)* & (mods: KeywordPub)?
-    & (value: (StructDefConstruct | AttrInner | EnumDefConstruct | UseConstruct | FnDefConstruct
-        | TraitDef | ImplStatement | TypeDef | ModuleDef | TraitDef | ImplStatement | Extern)))]
+    #[rule((attrs: AttrOuter)* & (mods: KeywordPub)? & (mods: (Extern | Unsafe))?
+    & (value: (StructDefConstruct | AttrInner | EnumDefConstruct | UseConstruct | FnDefConstruct | TraitDef
+    | ImplStatement | TypeDef | ModuleDef | TraitDef | ImplStatement)))]
     RootItem {
         attrs: Vec<NodeRef>,
-        mods: NodeRef,
+        mods: Vec<NodeRef>,
         value: NodeRef,
     },
 
     // A
-    #[rule($HashBang & $BracketOpen & (items: (($ParenthesisOpen & ANY* & $ParenthesisClose) | ($BracketOpen & ANY* & $BracketClose)
-    | ($BraceOpen & ANY* & $BraceClose) | ANY))* & $BracketClose)]
+    #[rule($HashBang & $BracketOpen & (items: (($ParenthesisOpen & ATTR_ITEM* & $ParenthesisClose)
+    | ($BracketOpen & ATTR_ITEM* & $BracketClose) | ($AngleBracketOpen & ATTR_ITEM* & $AngleBracketClose)
+    | ($BraceOpen & ATTR_ITEM* & $BraceClose) | ATTR_ITEM))* & $BracketClose)]
     AttrInner { items: Vec<TokenRef> },
 
-    #[rule($Hash & $BracketOpen & (items: (($ParenthesisOpen & ANY* & $ParenthesisClose) | ($BracketOpen & ANY* & $BracketClose)
-    | ($BraceOpen & ANY* & $BraceClose) | ANY))* & $BracketClose)]
+    #[rule($Hash & $BracketOpen & (items: (($ParenthesisOpen & ATTR_ITEM* & $ParenthesisClose)
+    | ($BracketOpen & ATTR_ITEM* & $BracketClose) | ($BraceOpen & ATTR_ITEM* & $BraceClose) | ATTR_ITEM))*
+    & $BracketClose)]
     AttrOuter { items: Vec<TokenRef> },
 
     // B
@@ -66,7 +90,7 @@ pub enum RustNode {
     CodeBlock,
 
     #[comment]
-    #[rule($SingleComment & (value: (ANY | $MultilineCommentClose)*))]
+    #[rule($SingleComment & (value: (ANY | $MultilineCommentClose | ($Backslash & $NewLine))*))]
     CommentSingle { value: Vec<TokenRef> },
 
     #[comment]
@@ -91,9 +115,9 @@ pub enum RustNode {
     #[rule($BraceOpen & (items: StructItem)*{$Comma} & $BraceClose)]
     EnumItemFields { items: Vec<NodeRef> },
 
-    #[rule($KeywordEnum & (name: $Identifier) & (generic: GenericDef)?
-    & (where_cond: Where)? & $BraceOpen & ((inner_attrs: AttrInner) | ((items: EnumItem) & $Comma))*
-    & ((inner_attrs: AttrInner) | (items: EnumItem))? & $BraceClose)]
+    #[rule($KeywordEnum & (name: $Identifier) & (generic: GenericDef)? & (where_cond: Where)?
+    & $BraceOpen & ((inner_attrs: AttrInner) | ((items: EnumItem) & $Comma))* & ((inner_attrs: AttrInner)
+    | (items: EnumItem))? & $BraceClose)]
     EnumDefConstruct {
         name: TokenRef,
         generic: NodeRef,
@@ -102,8 +126,8 @@ pub enum RustNode {
         items: Vec<NodeRef>,
     },
 
-    #[rule($KeywordExtern & (lang: String) & (value: (ModuleBlock | RootItem)))]
-    Extern { lang: NodeRef, value: NodeRef },
+    #[rule($KeywordExtern & (lang: String))]
+    Extern { lang: NodeRef },
 
     // F
     // #[rule($KeywordFalse)]
@@ -125,8 +149,8 @@ pub enum RustNode {
     FnTyping { impl_kw: TokenRef, _type: NodeRef },
 
     #[rule($KeywordFn & (name: $Identifier) & (generic: GenericDef)?
-    & ($ParenthesisOpen & (params: FnParameterConstruct)*{$Comma} & $ParenthesisClose)
-    & (_type: FnTyping)? & (where_cond: Where)? & (code: (CodeBlock | Semicolon)))]
+    & ($ParenthesisOpen & (params: FnParameterConstruct)*{$Comma} & $ParenthesisClose) & (_type: FnTyping)?
+    & (where_cond: Where)? & (code: (CodeBlock | Semicolon)))]
     FnDefConstruct {
         name: TokenRef,
         generic: NodeRef,
@@ -146,8 +170,7 @@ pub enum RustNode {
     // H
 
     // I
-    #[rule($KeywordImpl & (_type: Type) & ($KeywordFor & (for_t: Type))?
-    & (code: (TraitBlock | Semicolon)))]
+    #[rule($KeywordImpl & (_type: Type) & ($KeywordFor & (for_t: Type))? & (code: (TraitBlock | Semicolon)))]
     ImplStatement {
         _type: NodeRef,
         for_t: NodeRef,
@@ -157,7 +180,7 @@ pub enum RustNode {
     // J
 
     // K
-    #[rule($KeywordPub & ($ParenthesisOpen & (pub_for: Path) & $ParenthesisClose))]
+    #[rule($KeywordPub & ($ParenthesisOpen & (pub_for: Path | PubIn) & $ParenthesisClose))]
     KeywordPub { pub_for: NodeRef },
 
     // L
@@ -179,11 +202,14 @@ pub enum RustNode {
     // O
 
     // P
-    #[rule((is_absolute: $DoubleColon)? &((path: PATH_ITEM) & $DoubleColon)* & (path: PATH_ITEM))]
+    #[rule((is_absolute: $DoubleColon)? & ((path: PATH_ITEM) & $DoubleColon)* & (path: PATH_ITEM))]
     Path {
         is_absolute: TokenRef,
         path: Vec<TokenRef>,
     },
+
+    #[rule($KeywordIn & (path: Path))]
+    PubIn { path: NodeRef },
 
     // Q
 
@@ -194,6 +220,7 @@ pub enum RustNode {
     // S
     #[rule(value: $String)]
     String { value: TokenRef },
+
     #[rule($Semicolon)]
     Semicolon,
 
@@ -283,6 +310,9 @@ pub enum RustNode {
     },
 
     // U
+    #[rule($KeywordUnsafe)]
+    Unsafe,
+
     #[rule(path: Path)]
     UseType { path: NodeRef },
 
@@ -312,105 +342,3 @@ pub enum RustNode {
 
     // Z
 }
-
-/*
-KeywordAs
-    KeywordAsync
-    KeywordAwait
-    KeywordBreak
-    KeywordConst
-    KeywordContinue
-    KeywordCrate
-    KeywordDo
-    KeywordDyn
-    KeywordElse
-    KeywordEnum
-    KeywordExtern
-    KeywordFalse
-    KeywordFn
-    KeywordFor
-    KeywordIf
-    KeywordImpl
-    KeywordIn
-    KeywordLet
-    KeywordLoop
-    KeywordMacro
-    KeywordMatch
-    KeywordMod
-    KeywordMove
-    KeywordMut
-    KeywordPub
-    KeywordRef
-    KeywordReturn
-    KeywordSelf
-    KeywordUSelf
-    KeywordStatic
-    KeywordStruct
-    KeywordSuper
-    KeywordTrait
-    KeywordTrue
-    KeywordTry
-    KeywordType
-    KeywordUnion
-    KeywordUnsafe
-    KeywordUse
-    KeywordWhere
-    KeywordWhile
-    KeywordYield
-    KeywordMacroRules
-    NumType
-    BasicType
-
-    #[precedence(3)]
-    #[rule("0b" & BIN+ & ('.' & BIN+)? & NUM_TYPES?)]
-    BinNumber,
-
-    #[precedence(3)]
-    #[rule("0o" & OCT+ & ('.' & OCT+)? & NUM_TYPES?)]
-    OctNumber,
-
-    #[precedence(2)]
-    #[rule(DEC+ & ('.' & DEC+)? & NUM_TYPES?)]
-    DecNumber
-    HexNumber
-    String
-    Identifier
-    ParenthesisOpen
-    ParenthesisClose
-    AngleBracketOpen
-    AngleBracketClose
-    BraceOpen
-    BraceClose
-    BracketOpen
-    BracketClose
-    Underscore
-    Comma
-    Point
-    Range
-    Apostrophe
-    AsciiChar
-    DoubleColon
-    Colon
-    Dollar
-    Semicolon
-    Operator
-    Add
-    Assign
-    Amp
-    Star
-    Slash
-    Tilda
-    At
-    Backslash
-    Escape
-    Bang
-    QuestMark
-    Hash
-    HashBang
-    Arrow
-    AssignWithOperation
-    Whitespace
-    NewLine
-    SingleComment
-    MultilineCommentOpen
- */

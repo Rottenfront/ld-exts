@@ -364,15 +364,12 @@ unsafe
      unsafe fn f() {}
      unsafe trait T {}
      unsafe { f(); }
-     unsafe impl T for S {}	Guarantees S is well-behaved w.r.t T; people may use T on S safely.
-Control Flow
-Control execution within a function.
+     unsafe impl T for S {}
 
-Example	Explanation
-while x {}	Loop, REF run while expression x is true.
-loop {}	Loop indefinitely REF until break. Can yield value with break x.
-for x in collection {}	Syntactic sugar to loop over iterators. BK STD REF
-     collection.into_iter()	Effectively converts any IntoIterator STD type into proper iterator first.
+while x {}
+loop {}
+for x in collection {}
+     collection.into_iter()
      iterator.next()
 if x {} else {}
 'label: {}
@@ -418,23 +415,12 @@ pub T
      pub(self) T
      pub(in a::b) T
 extern crate a;
-extern "C" {}
-extern "C" fn f() {}
-
-type T = S;
-Self
-self
-     &self
-     &mut self
      self: Box<Self>
 <S as T>
 a::b as c
 x as u32
 
 m!()
-#[attr]
-#![attr]
-
 $x:ty
 $x
 $(x),*
@@ -485,10 +471,6 @@ x @ 1..=5 => {}
      Err(x @ Error {..}) => {}
 S { x } if x > 10 => {}
 
-struct S<T>
-S<T> where T: R
-     where T: R, P: S
-     where T: R + S
      where T: R + 'a
      where T: ?Sized
      where T: 'a
@@ -505,15 +487,9 @@ S<T = R>
 S<'_>
 S<_>
 S::<T>
-trait T<X> {}
-trait T { type X; }
-trait T { type X<G>; }
 trait T { type X<'a>; }
-     type X = R;
-     type X<G> = R<G>;
 impl<T> S<T> {}
 impl S<T> {}
-fn f() -> impl T
 fn f(x: &impl T)
 fn f(x: &dyn T)
 fn f<X: T>(x: X)
