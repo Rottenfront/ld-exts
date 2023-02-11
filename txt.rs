@@ -1,0 +1,2 @@
+#[abbc]
+struct A();

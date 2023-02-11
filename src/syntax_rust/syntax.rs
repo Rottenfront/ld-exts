@@ -27,7 +27,7 @@ use std::vec::Vec;
 #[token(super::lexis::RustToken)]
 #[error(lady_deirdre::syntax::SyntaxError)]
 #[skip($Whitespace | $NewLine)]
-#[define(ANY = ($KeywordAs | $KeywordAsync | $KeywordAwait | $KeywordBreak | $KeywordConst | $KeywordContinue
+/*#[define(ANY = ($KeywordAs | $KeywordAsync | $KeywordAwait | $KeywordBreak | $KeywordConst | $KeywordContinue
 | $KeywordCrate | $KeywordDo | $KeywordDyn | $KeywordElse | $KeywordEnum | $KeywordExtern | $KeywordFalse
 | $KeywordFn | $KeywordFor | $KeywordIf | $KeywordImpl | $KeywordIn | $KeywordLet | $KeywordLoop | $KeywordMacro
 | $KeywordMatch | $KeywordMod | $KeywordMove | $KeywordMut | $KeywordPub | $KeywordRef | $KeywordReturn
@@ -38,8 +38,9 @@ use std::vec::Vec;
 | $BraceClose | $BracketOpen | $BracketClose | $Underscore | $Comma | $Point | $Range | $Apostrophe | $AsciiChar
 | $DoubleColon | $Colon | $Dollar | $Semicolon | $Operator | $Add | $Assign | $Amp | $Star | $Slash | $Tilda | $At
 | $Backslash | $Escape | $Bang | $QuestMark | $Hash | $HashBang | $Arrow | $AssignWithOperation | $Whitespace
-| $SingleComment | $MultilineCommentOpen | $Mismatch))]
-#[define(ATTR_ITEM = ($KeywordAs | $KeywordAsync | $KeywordAwait | $KeywordBreak | $KeywordConst | $KeywordContinue
+| $SingleComment | $MultilineCommentOpen | $Mismatch | $Bang | $QuestMark))]*/
+#[define(ANY = ($Identifier | $Comma | $Point | $Range | $Apostrophe))]
+/*#[define(ATTR_ITEM = ($KeywordAs | $KeywordAsync | $KeywordAwait | $KeywordBreak | $KeywordConst | $KeywordContinue
 | $KeywordCrate | $KeywordDo | $KeywordDyn | $KeywordElse | $KeywordEnum | $KeywordExtern | $KeywordFalse
 | $KeywordFn | $KeywordFor | $KeywordIf | $KeywordImpl | $KeywordIn | $KeywordLet | $KeywordLoop | $KeywordMacro
 | $KeywordMatch | $KeywordMod | $KeywordMove | $KeywordMut | $KeywordPub | $KeywordRef | $KeywordReturn
@@ -48,12 +49,13 @@ use std::vec::Vec;
 | $KeywordYield | $KeywordMacroRules | $NumType | $BasicType | $BinNumber | $OctNumber | $DecNumber | $HexNumber
 | $String | $Identifier | $Underscore | $Comma | $Point | $Range | $Apostrophe | $AsciiChar | $DoubleColon | $Colon
 | $Dollar | $Semicolon | $Operator | $Add | $Assign | $Amp | $Star | $Slash | $Tilda | $At | $Backslash | $Escape
-| $Bang | $QuestMark | $Hash | $HashBang | $Arrow | $AssignWithOperation | $Mismatch))]
+| $Bang | $QuestMark | $Hash | $HashBang | $Arrow | $AssignWithOperation | $Mismatch))]*/
+#[define(ATTR_ITEM = ($Identifier))]
 #[define(PATH_ITEM = ($Identifier | $KeywordSelf | $KeywordUSelf | $KeywordCrate | $KeywordSuper | $Star))]
 pub enum RustNode {
     // Root
     #[root]
-    #[rule(items: RootItem*)]
+    #[rule((items: RootItem)*)]
     Root { items: Vec<NodeRef> },
 
     #[rule((attrs: AttrOuter)* & (mods: KeywordPub)? & (mods: (Extern | Unsafe))?
