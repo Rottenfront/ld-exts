@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 # lady-deirdre = { git = "https://github.com/eliah-lakhin/lady-deirdre" }
 # lady-deirdre = { path = "./ld" }
-lady-deirdre = "1.0.2"
+lady-deirdre = "1.0.3"
 
 [dev-dependencies]
 criterion = "0.4.0"
