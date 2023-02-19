@@ -51,7 +51,7 @@ use std::vec::Vec;
 | $Dollar | $Semicolon | $Operator | $Add | $Assign | $Amp | $Star | $Slash | $Tilda | $At | $Backslash | $Escape
 | $Bang | $QuestMark | $Hash | $HashBang | $Arrow | $AssignWithOperation | $Mismatch))]*/
 #[define(ATTR_ITEM = ($Identifier))]
-#[define(PATH_ITEM = ($Identifier | $KeywordSelf | $KeywordUSelf | $KeywordCrate | $KeywordSuper | $Star))]
+#[define(PATH_ITEM = ($Identifier | $KeywordSelf | $KeywordUSelf | $KeywordCrate | $KeywordSuper))]
 pub enum RustNode {
     // Root
     #[root]
@@ -73,8 +73,8 @@ pub enum RustNode {
     | ($BraceOpen & ATTR_ITEM* & $BraceClose) | ATTR_ITEM))* & $BracketClose)]
     AttrInner { items: Vec<TokenRef> },
 
-    #[rule($Hash & $BracketOpen & (items: (($ParenthesisOpen & ATTR_ITEM* & $ParenthesisClose)
-    | ($BracketOpen & ATTR_ITEM* & $BracketClose) | ($BraceOpen & ATTR_ITEM* & $BraceClose) | ATTR_ITEM))*
+    #[rule($Hash & $BracketOpen & (items: (ATTR_ITEM | ($ParenthesisOpen & ATTR_ITEM* & $ParenthesisClose)
+    | ($BracketOpen & ATTR_ITEM* & $BracketClose) | ($BraceOpen & ATTR_ITEM* & $BraceClose)))*
     & $BracketClose)]
     AttrOuter { items: Vec<TokenRef> },
 
@@ -95,7 +95,7 @@ pub enum RustNode {
     CommentSingle { value: Vec<TokenRef> },
 
     #[comment]
-    #[rule($MultilineCommentOpen & (value: (ANY | $NewLine)*) & $MultilineCommentClose?)]
+    #[rule($MultilineCommentOpen & (value: (ANY | $NewLine)*) & $MultilineCommentClose)]
     CommentMultiline { value: Vec<TokenRef> },
 
     // D
@@ -138,6 +138,7 @@ pub enum RustNode {
         name: TokenRef,
         _type: NodeRef,
     },
+    /*
 
     #[rule((parent: Path) & $ParenthesisOpen & (name: $Identifier) & $ParenthesisClose & $Colon & (_type: Type))]
     FnParameterWithParent {
@@ -146,7 +147,16 @@ pub enum RustNode {
         _type: NodeRef,
     },
 
-    #[rule((attrs: AttrOuter)* & (value: (FnParameter | FnParameterWithParent | SelfUse)))]
+    #[rule((is_absolute: $DoubleColon)? & ((path: PATH_ITEM) & $DoubleColon)* & (path: PATH_ITEM) & ($DoubleColon & (path: $Star))?)]
+    Path {
+        is_absolute: TokenRef,
+        path: Vec<TokenRef>,
+    },
+    */
+    #[rule((refer: Reference)? & $KeywordSelf)]
+    SelfUse { refer: NodeRef },
+
+    #[rule((attrs: AttrOuter)* & (value: (FnParameter | SelfUse)))]
     FnParameterConstruct { attrs: Vec<NodeRef>, value: NodeRef },
 
     #[rule($Arrow & (impl_kw: $KeywordImpl)? & (_type: Type))]
@@ -168,8 +178,16 @@ pub enum RustNode {
     #[rule($AngleBracketOpen & (items: TypeForGeneric)+{$Comma} & $AngleBracketOpen)]
     GenericDef { items: Vec<NodeRef> },
 
-    #[rule($AngleBracketOpen & (items: (Type | SetType))+{$Comma} & $AngleBracketOpen)]
+    #[rule($AngleBracketOpen & (items: GenericUseType)+{$Comma} & $AngleBracketOpen)]
     GenericUse { items: Vec<NodeRef> },
+
+    #[rule(((is_absolute: $DoubleColon)? & (path: ($KeywordSelf | $KeywordUSelf | $KeywordCrate | $KeywordSuper)) & $DoubleColon
+    & ((path: PATH_ITEM) & $DoubleColon)* & (path: PATH_ITEM)) | (((path: $Identifier) & $DoubleColon)* & (path: $Identifier) & $Assign & (_type: Type)))]
+    GenericUseType {
+        is_absolute: TokenRef,
+        path: Vec<TokenRef>,
+        _type: NodeRef,
+    },
 
     // H
 
@@ -184,7 +202,7 @@ pub enum RustNode {
     // J
 
     // K
-    #[rule($KeywordPub & ($ParenthesisOpen & (pub_for: Path | PubIn) & $ParenthesisClose))]
+    #[rule($KeywordPub & ($ParenthesisOpen & (pub_for: Path | PubIn) & $ParenthesisClose)?)]
     KeywordPub { pub_for: NodeRef },
 
     // L
@@ -192,11 +210,8 @@ pub enum RustNode {
     Lifetime { value: TokenRef },
 
     // M
-    #[rule($BraceOpen & ((items: RootItem) | (inner_attrs: AttrInner))* & $BraceClose)]
-    ModuleBlock {
-        items: Vec<NodeRef>,
-        inner_attrs: Vec<NodeRef>,
-    },
+    #[rule($BraceOpen & (items: RootItem)* & $BraceClose)]
+    ModuleBlock { items: Vec<NodeRef> },
 
     #[rule($KeywordMod & (name: $Identifier) & (code: (Semicolon | ModuleBlock)))]
     ModuleDef { name: TokenRef, code: NodeRef },
@@ -208,7 +223,7 @@ pub enum RustNode {
     // O
 
     // P
-    #[rule((is_absolute: $DoubleColon)? & ((path: PATH_ITEM) & $DoubleColon)* & (path: PATH_ITEM))]
+    #[rule((is_absolute: $DoubleColon)? & ((path: PATH_ITEM) & $DoubleColon)* & (path: PATH_ITEM) & ($DoubleColon & (path: $Star))?)]
     Path {
         is_absolute: TokenRef,
         path: Vec<TokenRef>,
@@ -233,9 +248,6 @@ pub enum RustNode {
 
     #[rule($Semicolon)]
     Semicolon,
-
-    #[rule((name: $Identifier) & $Assign & (_type: Type))]
-    SetType { name: TokenRef, _type: NodeRef },
 
     #[rule((attrs: AttrOuter)* & (name: $Identifier) & $Colon & (_type: Type))]
     StructItem {
@@ -262,9 +274,6 @@ pub enum RustNode {
         name: TokenRef,
         value: NodeRef,
     },
-
-    #[rule((refer: Reference)? & $KeywordSelf)]
-    SelfUse { refer: NodeRef },
 
     // T
     // #[rule($KeywordTrue)]
@@ -306,7 +315,7 @@ pub enum RustNode {
         code: NodeRef,
     },
 
-    #[rule($KeywordType & (name: $Identifier) & (generic: GenericDef) & ($Assign & set: Type)?)]
+    #[rule($KeywordType & (name: $Identifier) & (generic: GenericDef)? & ($Assign & set: Type)? & $Semicolon)]
     TypeDef {
         name: TokenRef,
         generic: NodeRef,
