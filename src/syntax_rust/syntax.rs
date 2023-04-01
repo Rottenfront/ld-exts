@@ -91,7 +91,7 @@ pub enum RustNode {
     CodeBlock,
 
     #[comment]
-    #[rule($SingleComment & (value: (ANY | $MultilineCommentClose | ($Backslash & $NewLine))*))]
+    #[rule($SingleComment & (value: (ANY | $MultilineCommentClose | ($Backslash & ($NewLine)?))*))]
     CommentSingle { value: Vec<TokenRef> },
 
     #[comment]
@@ -102,7 +102,7 @@ pub enum RustNode {
 
     // E
     #[rule((attrs: AttrOuter)* & (name: $Identifier) & (additional: (EnumItemAnonFields | EnumItemFields))?
-    & ($Assign & (num: Number))?)]
+        & ($Assign & (num: Number))?)]
     EnumItem {
         attrs: Vec<NodeRef>,
         name: TokenRef,
@@ -117,8 +117,8 @@ pub enum RustNode {
     EnumItemFields { items: Vec<NodeRef> },
 
     #[rule($Enum & (name: $Identifier) & (generic: GenericDef)? & (where_cond: Where)?
-    & $BraceOpen & ((inner_attrs: AttrInner) | ((items: EnumItem) & $Comma))* & ((inner_attrs: AttrInner)
-    | (items: EnumItem))? & $BraceClose)]
+        & $BraceOpen & ((inner_attrs: AttrInner) | ((items: EnumItem) & $Comma))* & ((inner_attrs: AttrInner)
+        | (items: EnumItem))? & $BraceClose)]
     EnumDefConstruct {
         name: TokenRef,
         generic: NodeRef,
@@ -134,10 +134,7 @@ pub enum RustNode {
     // #[rule($False)]
     // False,
     #[rule((name: $Identifier) & $Colon & (_type: Type))]
-    FnParameter {
-        name: TokenRef,
-        _type: NodeRef,
-    },
+    FnParameter { name: TokenRef, _type: NodeRef },
     /*
 
     #[rule((parent: Path) & $ParenthesisOpen & (name: $Identifier) & $ParenthesisClose & $Colon & (_type: Type))]
@@ -163,8 +160,8 @@ pub enum RustNode {
     FnTyping { impl_kw: TokenRef, _type: NodeRef },
 
     #[rule($Fn & (name: $Identifier) & (generic: GenericDef)?
-    & ($ParenthesisOpen & (params: FnParameterConstruct)*{$Comma} & $ParenthesisClose) & (_type: FnTyping)?
-    & (where_cond: Where)? & (code: (CodeBlock | Semicolon)))]
+        & ($ParenthesisOpen & (params: FnParameterConstruct)*{$Comma} & $ParenthesisClose) & (_type: FnTyping)?
+        & (where_cond: Where)? & (code: (CodeBlock | Semicolon)))]
     FnDefConstruct {
         name: TokenRef,
         generic: NodeRef,
@@ -182,7 +179,7 @@ pub enum RustNode {
     GenericUse { items: Vec<NodeRef> },
 
     #[rule(((is_absolute: $DoubleColon)? & (path: ($LSelf | $USelf | $Crate | $Super)) & $DoubleColon
-    & ((path: PATH_ITEM) & $DoubleColon)* & (path: PATH_ITEM)) | (((path: $Identifier) & $DoubleColon)* & (path: $Identifier) & $Assign & (_type: Type)))]
+        & ((path: PATH_ITEM) & $DoubleColon)* & (path: PATH_ITEM)) | (((path: $Identifier) & $DoubleColon)* & (path: $Identifier) & $Assign & (_type: Type)))]
     GenericUseType {
         is_absolute: TokenRef,
         path: Vec<TokenRef>,
@@ -222,7 +219,7 @@ pub enum RustNode {
 
     // P
     #[rule((prefix: (($Crate | $Super+{$DoubleColon} | $LSelf | $USelf)? & $DoubleColon))?
-    & (path: $Identifier)+{$DoubleColon})]
+        & (path: $Identifier)+{$DoubleColon})]
     Path {
         prefix: Vec<TokenRef>,
         path: Vec<TokenRef>,
@@ -262,7 +259,7 @@ pub enum RustNode {
     },
 
     #[rule($BraceOpen & ((inner_attrs: AttrInner) | ((items: StructItem) & $Comma))*
-    & ((inner_attrs: AttrInner) | (items: StructItem))? & $BraceClose)]
+        & ((inner_attrs: AttrInner) | (items: StructItem))? & $BraceClose)]
     StructDefStatement {
         inner_attrs: Vec<NodeRef>,
         items: Vec<NodeRef>,
@@ -272,7 +269,7 @@ pub enum RustNode {
     ShortStructDefStatement { items: Vec<NodeRef> },
 
     #[rule($Struct & (name: $Identifier) & (generic: GenericDef)?
-    & (where_cond: Where)? & (value: (ShortStructDefStatement | StructDefStatement)))]
+        & (where_cond: Where)? & (value: (ShortStructDefStatement | StructDefStatement)))]
     StructDefConstruct {
         generic: NodeRef,
         where_cond: NodeRef,
@@ -283,17 +280,14 @@ pub enum RustNode {
     // T
     // #[rule($True)]
     // True,
-    #[rule((refer: Reference)? & (value: (BasicType | UseType)) & (generic: GenericUse)?)]
-    Type {
-        refer: NodeRef,
-        value: NodeRef,
-        generic: NodeRef,
-    },
+    #[rule((refer: Reference)? & (value: TypeNoRefer))]
+    Type { refer: NodeRef, value: NodeRef },
 
-    #[rule((value: (BasicType | UseType)) & (generic: GenericUse)?)]
+    #[rule((value: (BasicType | Path)) & (generic: GenericUse)?)]
     TypeNoRefer { value: NodeRef, generic: NodeRef },
 
-    #[rule((attrs: AttrOuter)* & (name: $Identifier) & ($Colon & ((value: (TypeNoRefer | Lifetime)) & $Add)* & (value: (TypeNoRefer | Lifetime)))?)]
+    #[rule((attrs: AttrOuter)* & (name: $Identifier) & ($Colon
+        & ((value: (TypeNoRefer | Lifetime)) & $Add)* & (value: (TypeNoRefer | Lifetime)))?)]
     TypeForGeneric {
         attrs: Vec<NodeRef>,
         name: TokenRef,
@@ -343,9 +337,6 @@ pub enum RustNode {
     // U
     #[rule($Unsafe)]
     Unsafe,
-
-    #[rule(path: Path)]
-    UseType { path: NodeRef },
 
     #[rule($BraceOpen & (inner: UseStatementConstruct)*{$Comma} & $BraceClose)]
     UseBlock { inner: Vec<NodeRef> },

@@ -74,54 +74,54 @@ pub enum RustToken {
     DecNumber,
     HexNumber,
 
-    Whitespace,             // ' ' | '\t' | '\r' | '\x0b' | '\x0c'
-    NewLine,                // '\n'
+    Whitespace, // ' ' | '\t' | '\r' | '\x0b' | '\x0c'
+    NewLine,    // '\n'
 
-    ParenthesisOpen,        // (
-    ParenthesisClose,       // )
+    ParenthesisOpen,  // (
+    ParenthesisClose, // )
 
-    AngleBracketOpen,       // <
-    AngleBracketClose,      // >
+    AngleBracketOpen,  // <
+    AngleBracketClose, // >
 
-    BraceOpen,              // {
-    BraceClose,             // }
+    BraceOpen,  // {
+    BraceClose, // }
 
-    BracketOpen,            // [
-    BracketClose,           // ]
+    BracketOpen,  // [
+    BracketClose, // ]
 
-    Comma,                  // ,
-    Pipe,                   // |
+    Comma, // ,
+    Pipe,  // |
 
-    Point,                  // .
-    Range,                  // ..
+    Point, // .
+    Range, // ..
 
-    Apostrophe,             // '
-    AsciiChar,              // b'
+    Apostrophe, // '
+    AsciiChar,  // b'
 
-    Colon,                  // :
-    DoubleColon,            // ::
+    Colon,       // :
+    DoubleColon, // ::
 
-    Dollar,                 // $
-    Semicolon,              // ;
-    Operator,               // - % ^
-    BoolOperator,           // >= == <=
-    Add,                    // +
-    Assign,                 // =
-    Amp,                    // &
-    Star,                   // *
-    Slash,                  // /
-    Tilda,                  // ~
-    At,                     // @
-    Backslash,              // \\
-    Bang,                   // !
-    QuestMark,              // ?
-    Hash,                   // #
-    HashBang,               // #!
-    Arrow,                  // ->
-    AssignWithOperation,    // += -= /= *= ^= |= %= &=
-    SingleComment,          // //
-    MultilineCommentOpen,   // /*
-    MultilineCommentClose,  // */
+    Dollar,                // $
+    Semicolon,             // ;
+    Operator,              // - % ^
+    BoolOperator,          // >= == <=
+    Add,                   // +
+    Assign,                // =
+    Amp,                   // &
+    Star,                  // *
+    Slash,                 // /
+    Tilda,                 // ~
+    At,                    // @
+    Backslash,             // \\
+    Bang,                  // !
+    QuestMark,             // ?
+    Hash,                  // #
+    HashBang,              // #!
+    Arrow,                 // ->
+    AssignWithOperation,   // += -= /= *= ^= |= %= &=
+    SingleComment,         // //
+    MultilineCommentOpen,  // /*
+    MultilineCommentClose, // */
 
     Escape, // '\\' & (['\'', '"', '\\', '/', 'b', 'f', 'n', 'r', 't', '\n', '0'] | ('x' & HEX & HEX) | ("u{" & HEX & HEX & HEX & HEX & '}'))
 
@@ -200,16 +200,17 @@ impl lady_deirdre::lexis::Token for RustToken {
                     session.advance();
                     while session.character() == '0'
                         || session.character() == '1'
-                        || session.character() == '_' {
+                        || session.character() == '_'
+                    {
                         session.advance();
                     }
                     if session.character() == 'i'
                         || session.character() == 'u'
-                        || session.character() == 'f' {
-                        while (session.character() >= '0'
-                            && session.character() <= '9')
-                            || (session.character() >= 'a'
-                            && session.character() <= 'z') {
+                        || session.character() == 'f'
+                    {
+                        while (session.character() >= '0' && session.character() <= '9')
+                            || (session.character() >= 'a' && session.character() <= 'z')
+                        {
                             session.advance();
                         }
                     }
@@ -218,18 +219,18 @@ impl lady_deirdre::lexis::Token for RustToken {
                 }
                 (1usize, '0', 'o') => {
                     session.advance();
-                    while (session.character() >= '0'
-                        && session.character() <= '7')
-                        || session.character() == '_' {
+                    while (session.character() >= '0' && session.character() <= '7')
+                        || session.character() == '_'
+                    {
                         session.advance();
                     }
                     if session.character() == 'i'
                         || session.character() == 'u'
-                        || session.character() == 'f' {
-                        while (session.character() >= '0'
-                            && session.character() <= '9')
-                            || (session.character() >= 'a'
-                            && session.character() <= 'z') {
+                        || session.character() == 'f'
+                    {
+                        while (session.character() >= '0' && session.character() <= '9')
+                            || (session.character() >= 'a' && session.character() <= 'z')
+                        {
                             session.advance();
                         }
                     }
@@ -238,22 +239,20 @@ impl lady_deirdre::lexis::Token for RustToken {
                 }
                 (1usize, '0', 'x') => {
                     session.advance();
-                    while (session.character() >= '0'
-                        && session.character() <= '9')
-                        || (session.character() >= 'a'
-                        && session.character() <= 'f')
-                        || (session.character() >= 'A'
-                        && session.character() <= 'F')
-                        || session.character() == '_' {
+                    while (session.character() >= '0' && session.character() <= '9')
+                        || (session.character() >= 'a' && session.character() <= 'f')
+                        || (session.character() >= 'A' && session.character() <= 'F')
+                        || session.character() == '_'
+                    {
                         session.advance();
                     }
                     if session.character() == 'i'
                         || session.character() == 'u'
-                        || session.character() == 'f' {
-                        while (session.character() >= '0'
-                            && session.character() <= '9')
-                            || (session.character() >= 'a'
-                            && session.character() <= 'z') {
+                        || session.character() == 'f'
+                    {
+                        while (session.character() >= '0' && session.character() <= '9')
+                            || (session.character() >= 'a' && session.character() <= 'z')
+                        {
                             session.advance();
                         }
                     }
@@ -271,7 +270,9 @@ impl lady_deirdre::lexis::Token for RustToken {
                     return Self::DecNumber;
                 }
 
-                (1usize | 3usize, '\t' | '\u{b}'..='\r' | ' ', '\t' | '\u{b}'..='\r' | ' ') => state = 3usize,
+                (1usize | 3usize, '\t' | '\u{b}'..='\r' | ' ', '\t' | '\u{b}'..='\r' | ' ') => {
+                    state = 3usize
+                }
                 (1usize | 3usize, '\t' | '\u{b}'..='\r' | ' ', _) => {
                     session.submit();
                     return Self::Whitespace;
@@ -431,7 +432,11 @@ impl lady_deirdre::lexis::Token for RustToken {
                     session.submit();
                     return Self::Hash;
                 }
-                (1usize, '\\', '\'' | '"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' | '\n' | '0') => {
+                (
+                    1usize,
+                    '\\',
+                    '\'' | '"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' | '\n' | '0',
+                ) => {
                     session.submit();
                     return Self::Escape;
                 }
@@ -821,11 +826,42 @@ impl lady_deirdre::lexis::Token for RustToken {
                     return Self::String;
                 }
                 (1usize | 5usize, _, ch) => {
-                    if ch == ' ' || ch == '\t' || ch == '\r' || ch == '\x0b' || ch == '\x0c' || ch == '\n' || ch == '(' || ch == ')'
-                        || ch == '<' || ch == '>'  || ch == '{' || ch == '}' || ch == '[' || ch == ']' || ch == ',' || ch == '|'
-                        || ch == '.' || ch == '\'' || ch == ':' || ch == '$' || ch == ';' || ch == '-' || ch == '%' || ch == '^'
-                        || ch == '=' || ch == '+'  || ch == '&' || ch == '*' || ch == '/' || ch == '~' || ch == '@' || ch == '\\'
-                        || ch == '!' || ch == '?'  || ch == '#' {
+                    if ch == ' '
+                        || ch == '\t'
+                        || ch == '\r'
+                        || ch == '\x0b'
+                        || ch == '\x0c'
+                        || ch == '\n'
+                        || ch == '('
+                        || ch == ')'
+                        || ch == '<'
+                        || ch == '>'
+                        || ch == '{'
+                        || ch == '}'
+                        || ch == '['
+                        || ch == ']'
+                        || ch == ','
+                        || ch == '|'
+                        || ch == '.'
+                        || ch == '\''
+                        || ch == ':'
+                        || ch == '$'
+                        || ch == ';'
+                        || ch == '-'
+                        || ch == '%'
+                        || ch == '^'
+                        || ch == '='
+                        || ch == '+'
+                        || ch == '&'
+                        || ch == '*'
+                        || ch == '/'
+                        || ch == '~'
+                        || ch == '@'
+                        || ch == '\\'
+                        || ch == '!'
+                        || ch == '?'
+                        || ch == '#'
+                    {
                         session.submit();
                         return Self::Identifier;
                     }
@@ -932,7 +968,8 @@ impl Display for RustToken {
             Self::SingleComment => "SingleComment",
             Self::MultilineCommentOpen => "MultilineCommentOpen",
             Self::MultilineCommentClose => "MultilineCommentClose",
-        }.fmt(f)
+        }
+        .fmt(f)
     }
 }
 // ("r\"" & (ESCAPE | ^['"', '\\'])* & '\"')
@@ -979,8 +1016,8 @@ s.x	Named field access
 s.0	Numbered field access
 
 trait T {}
-trait T : R {}
-impl S {}
+trait T : R {}                done
+impl S {}                     done
 impl T for S {}
 impl !T for S {}
 fn f() {}
