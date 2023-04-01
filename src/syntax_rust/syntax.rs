@@ -27,38 +27,38 @@ use std::vec::Vec;
 #[token(super::lexis::RustToken)]
 #[error(lady_deirdre::syntax::SyntaxError)]
 #[skip($Whitespace | $NewLine)]
-/*#[define(ANY = ($KeywordAs | $KeywordAsync | $KeywordAwait | $KeywordBreak | $KeywordConst | $KeywordContinue
-| $KeywordCrate | $KeywordDo | $KeywordDyn | $KeywordElse | $KeywordEnum | $KeywordExtern | $KeywordFalse
-| $KeywordFn | $KeywordFor | $KeywordIf | $KeywordImpl | $KeywordIn | $KeywordLet | $KeywordLoop | $KeywordMacro
-| $KeywordMatch | $KeywordMod | $KeywordMove | $KeywordMut | $KeywordPub | $KeywordRef | $KeywordReturn
-| $KeywordSelf | $KeywordUSelf | $KeywordStatic | $KeywordStruct | $KeywordSuper | $KeywordTrait | $KeywordTrue
-| $KeywordTry | $KeywordType | $KeywordUnion | $KeywordUnsafe | $KeywordUse | $KeywordWhere | $KeywordWhile
-| $KeywordYield | $KeywordMacroRules | $NumType | $BasicType | $BinNumber | $OctNumber | $DecNumber | $HexNumber
+/*#[define(ANY = ($As | $Async | $Await | $Break | $Const | $Continue
+| $Crate | $Do | $Dyn | $Else | $Enum | $Extern | $False
+| $Fn | $For | $If | $Impl | $In | $Let | $Loop | $Macro
+| $Match | $Mod | $Move | $Mut | $Pub | $Ref | $Return
+| $LSelf | $USelf | $Static | $Struct | $Super | $Trait | $True
+| $Try | $Type | $Union | $Unsafe | $Use | $Where | $While
+| $Yield | $MacroRules | $NumType | $BasicType | $BinNumber | $OctNumber | $DecNumber | $HexNumber
 | $String | $Identifier | $ParenthesisOpen | $ParenthesisClose | $AngleBracketOpen | $AngleBracketClose | $BraceOpen
 | $BraceClose | $BracketOpen | $BracketClose | $Underscore | $Comma | $Point | $Range | $Apostrophe | $AsciiChar
 | $DoubleColon | $Colon | $Dollar | $Semicolon | $Operator | $Add | $Assign | $Amp | $Star | $Slash | $Tilda | $At
 | $Backslash | $Escape | $Bang | $QuestMark | $Hash | $HashBang | $Arrow | $AssignWithOperation | $Whitespace
 | $SingleComment | $MultilineCommentOpen | $Mismatch | $Bang | $QuestMark))]*/
 #[define(ANY = ($Identifier | $Comma | $Point | $Range | $Apostrophe))]
-/*#[define(ATTR_ITEM = ($KeywordAs | $KeywordAsync | $KeywordAwait | $KeywordBreak | $KeywordConst | $KeywordContinue
-| $KeywordCrate | $KeywordDo | $KeywordDyn | $KeywordElse | $KeywordEnum | $KeywordExtern | $KeywordFalse
-| $KeywordFn | $KeywordFor | $KeywordIf | $KeywordImpl | $KeywordIn | $KeywordLet | $KeywordLoop | $KeywordMacro
-| $KeywordMatch | $KeywordMod | $KeywordMove | $KeywordMut | $KeywordPub | $KeywordRef | $KeywordReturn
-| $KeywordSelf | $KeywordUSelf | $KeywordStatic | $KeywordStruct | $KeywordSuper | $KeywordTrait | $KeywordTrue
-| $KeywordTry | $KeywordType | $KeywordUnion | $KeywordUnsafe | $KeywordUse | $KeywordWhere | $KeywordWhile
-| $KeywordYield | $KeywordMacroRules | $NumType | $BasicType | $BinNumber | $OctNumber | $DecNumber | $HexNumber
+/*#[define(ATTR_ITEM = ($As | $Async | $Await | $Break | $Const | $Continue
+| $Crate | $Do | $Dyn | $Else | $Enum | $Extern | $False
+| $Fn | $For | $If | $Impl | $In | $Let | $Loop | $Macro
+| $Match | $Mod | $Move | $Mut | $Pub | $Ref | $Return
+| $LSelf | $USelf | $Static | $Struct | $Super | $Trait | $True
+| $Try | $Type | $Union | $Unsafe | $Use | $Where | $While
+| $Yield | $MacroRules | $NumType | $BasicType | $BinNumber | $OctNumber | $DecNumber | $HexNumber
 | $String | $Identifier | $Underscore | $Comma | $Point | $Range | $Apostrophe | $AsciiChar | $DoubleColon | $Colon
 | $Dollar | $Semicolon | $Operator | $Add | $Assign | $Amp | $Star | $Slash | $Tilda | $At | $Backslash | $Escape
 | $Bang | $QuestMark | $Hash | $HashBang | $Arrow | $AssignWithOperation | $Mismatch))]*/
 #[define(ATTR_ITEM = ($Identifier))]
-#[define(PATH_ITEM = ($Identifier | $KeywordSelf | $KeywordUSelf | $KeywordCrate | $KeywordSuper))]
+#[define(PATH_ITEM = ($Identifier | $LSelf | $USelf | $Super))]
 pub enum RustNode {
     // Root
     #[root]
     #[rule((items: RootItem)*)]
     Root { items: Vec<NodeRef> },
 
-    #[rule((attrs: AttrOuter)* & (mods: KeywordPub)? & (mods: (Extern | Unsafe))?
+    #[rule((attrs: AttrOuter)* & (mods: PubConstruct)? & (mods: (Extern | Unsafe))?
     & (value: (StructDefConstruct | AttrInner | EnumDefConstruct | UseConstruct | FnDefConstruct | TraitDef
     | ImplStatement | TypeDef | ModuleDef | TraitDef | ImplStatement)))]
     RootItem {
@@ -116,7 +116,7 @@ pub enum RustNode {
     #[rule($BraceOpen & (items: StructItem)*{$Comma} & $BraceClose)]
     EnumItemFields { items: Vec<NodeRef> },
 
-    #[rule($KeywordEnum & (name: $Identifier) & (generic: GenericDef)? & (where_cond: Where)?
+    #[rule($Enum & (name: $Identifier) & (generic: GenericDef)? & (where_cond: Where)?
     & $BraceOpen & ((inner_attrs: AttrInner) | ((items: EnumItem) & $Comma))* & ((inner_attrs: AttrInner)
     | (items: EnumItem))? & $BraceClose)]
     EnumDefConstruct {
@@ -127,11 +127,11 @@ pub enum RustNode {
         items: Vec<NodeRef>,
     },
 
-    #[rule($KeywordExtern & (lang: String))]
+    #[rule($Extern & (lang: String))]
     Extern { lang: NodeRef },
 
     // F
-    // #[rule($KeywordFalse)]
+    // #[rule($False)]
     // False,
     #[rule((name: $Identifier) & $Colon & (_type: Type))]
     FnParameter {
@@ -153,16 +153,16 @@ pub enum RustNode {
         path: Vec<TokenRef>,
     },
     */
-    #[rule((refer: Reference)? & $KeywordSelf)]
+    #[rule((refer: Reference)? & $LSelf)]
     SelfUse { refer: NodeRef },
 
     #[rule((attrs: AttrOuter)* & (value: (FnParameter | SelfUse)))]
     FnParameterConstruct { attrs: Vec<NodeRef>, value: NodeRef },
 
-    #[rule($Arrow & (impl_kw: $KeywordImpl)? & (_type: Type))]
+    #[rule($Arrow & (impl_kw: $Impl)? & (_type: Type))]
     FnTyping { impl_kw: TokenRef, _type: NodeRef },
 
-    #[rule($KeywordFn & (name: $Identifier) & (generic: GenericDef)?
+    #[rule($Fn & (name: $Identifier) & (generic: GenericDef)?
     & ($ParenthesisOpen & (params: FnParameterConstruct)*{$Comma} & $ParenthesisClose) & (_type: FnTyping)?
     & (where_cond: Where)? & (code: (CodeBlock | Semicolon)))]
     FnDefConstruct {
@@ -181,7 +181,7 @@ pub enum RustNode {
     #[rule($AngleBracketOpen & (items: GenericUseType)+{$Comma} & $AngleBracketOpen)]
     GenericUse { items: Vec<NodeRef> },
 
-    #[rule(((is_absolute: $DoubleColon)? & (path: ($KeywordSelf | $KeywordUSelf | $KeywordCrate | $KeywordSuper)) & $DoubleColon
+    #[rule(((is_absolute: $DoubleColon)? & (path: ($LSelf | $USelf | $Crate | $Super)) & $DoubleColon
     & ((path: PATH_ITEM) & $DoubleColon)* & (path: PATH_ITEM)) | (((path: $Identifier) & $DoubleColon)* & (path: $Identifier) & $Assign & (_type: Type)))]
     GenericUseType {
         is_absolute: TokenRef,
@@ -192,7 +192,7 @@ pub enum RustNode {
     // H
 
     // I
-    #[rule($KeywordImpl & (_type: Path) & ($KeywordFor & (for_t: Path))? & (code: TraitBlock))]
+    #[rule($Impl & (_type: Path) & ($For & (for_t: Path))? & (code: TraitBlock))]
     ImplStatement {
         _type: NodeRef,
         for_t: NodeRef,
@@ -202,8 +202,6 @@ pub enum RustNode {
     // J
 
     // K
-    #[rule($KeywordPub & ($ParenthesisOpen & (pub_for: Path | PubIn) & $ParenthesisClose)?)]
-    KeywordPub { pub_for: NodeRef },
 
     // L
     #[rule($Apostrophe & (value: $Identifier))]
@@ -213,7 +211,7 @@ pub enum RustNode {
     #[rule($BraceOpen & (items: RootItem)* & $BraceClose)]
     ModuleBlock { items: Vec<NodeRef> },
 
-    #[rule($KeywordMod & (name: $Identifier) & (code: (Semicolon | ModuleBlock)))]
+    #[rule($Mod & (name: $Identifier) & (code: (Semicolon | ModuleBlock)))]
     ModuleDef { name: TokenRef, code: NodeRef },
 
     // N
@@ -223,19 +221,26 @@ pub enum RustNode {
     // O
 
     // P
-    #[rule((is_absolute: $DoubleColon)? & ((path: PATH_ITEM) & $DoubleColon)* & (path: PATH_ITEM) & ($DoubleColon & (path: $Star))?)]
+    #[rule((prefix: (($Crate | $Super+{$DoubleColon} | $LSelf | $USelf)? & $DoubleColon))?
+    & (path: $Identifier)+{$DoubleColon})]
     Path {
-        is_absolute: TokenRef,
+        prefix: Vec<TokenRef>,
         path: Vec<TokenRef>,
     },
 
-    #[rule($KeywordIn & (path: Path))]
+    #[rule($Pub & ($ParenthesisOpen & (pub_for: PubFor | PubIn) & $ParenthesisClose)?)]
+    PubConstruct { pub_for: NodeRef },
+
+    #[rule(path: ($Super | $Crate))]
+    PubFor { path: TokenRef },
+
+    #[rule($In & (path: Path))]
     PubIn { path: NodeRef },
 
     // Q
 
     // R
-    #[rule((refer: ($Amp | $Star)) & (lf: Lifetime)? & (mutability: $KeywordMut)?)]
+    #[rule((refer: ($Amp | $Star)) & (lf: Lifetime)? & (mutability: $Mut)?)]
     Reference {
         refer: TokenRef,
         lf: NodeRef,
@@ -266,7 +271,7 @@ pub enum RustNode {
     #[rule(($ParenthesisOpen & (items: Type)*{$Comma} & $ParenthesisClose)? & $Semicolon)]
     ShortStructDefStatement { items: Vec<NodeRef> },
 
-    #[rule($KeywordStruct & (name: $Identifier) & (generic: GenericDef)?
+    #[rule($Struct & (name: $Identifier) & (generic: GenericDef)?
     & (where_cond: Where)? & (value: (ShortStructDefStatement | StructDefStatement)))]
     StructDefConstruct {
         generic: NodeRef,
@@ -276,7 +281,7 @@ pub enum RustNode {
     },
 
     // T
-    // #[rule($KeywordTrue)]
+    // #[rule($True)]
     // True,
     #[rule((refer: Reference)? & (value: (BasicType | UseType)) & (generic: GenericUse)?)]
     Type {
@@ -305,7 +310,7 @@ pub enum RustNode {
     #[rule($Colon & ((traits: TypeNoRefer) & $Add)* & (traits: TypeNoRefer))]
     TraitInherit { traits: Vec<NodeRef> },
 
-    #[rule($KeywordTrait & (name: $Identifier) & (generic: GenericDef)?
+    #[rule($Trait & (name: $Identifier) & (generic: GenericDef)?
         & (inherit: TraitInherit)? & (where_cond: Where)? & (code: (TraitBlock | Semicolon)))]
     TraitDef {
         name: TokenRef,
@@ -315,14 +320,14 @@ pub enum RustNode {
         code: NodeRef,
     },
 
-    #[rule($KeywordType & (name: $Identifier) & (generic: GenericDef)? & ($Assign & set: Type)? & $Semicolon)]
+    #[rule($Type & (name: $Identifier) & (generic: GenericDef)? & ($Assign & set: Type)? & $Semicolon)]
     TypeDef {
         name: TokenRef,
         generic: NodeRef,
         set: NodeRef,
     },
 
-    #[rule((attrs: AttrOuter)* & (kw_pub: KeywordPub)? & (value: (FnDefConstruct | TypeDef)))]
+    #[rule((attrs: AttrOuter)* & (kw_pub: PubConstruct)? & (value: (FnDefConstruct | TypeDef)))]
     TraitItem {
         attrs: Vec<NodeRef>,
         kw_pub: NodeRef,
@@ -336,7 +341,7 @@ pub enum RustNode {
     },
 
     // U
-    #[rule($KeywordUnsafe)]
+    #[rule($Unsafe)]
     Unsafe,
 
     #[rule(path: Path)]
@@ -348,19 +353,19 @@ pub enum RustNode {
     #[rule($DoubleColon & block: UseBlock?)]
     UseStatementBlock { block: NodeRef },
 
-    #[rule($KeywordAs & (name: $Identifier))]
+    #[rule($As & (name: $Identifier))]
     UseStatementAs { name: TokenRef },
 
     #[rule((path: Path) & (additional: UseStatementBlock | UseStatementAs)?)]
     UseStatementConstruct { path: NodeRef, additional: NodeRef },
 
-    #[rule($KeywordUse & (st: UseStatementConstruct) & $Semicolon)]
+    #[rule($Use & (st: UseStatementConstruct) & $Semicolon)]
     UseConstruct { st: NodeRef },
 
     // V
 
     // W
-    #[rule($KeywordWhere & (items: TypeForWhere)+{$Comma})]
+    #[rule($Where & (items: TypeForWhere)+{$Comma})]
     Where { items: Vec<NodeRef> },
     // X
 

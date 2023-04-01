@@ -22,49 +22,49 @@ use lady_deirdre::lexis::LexisSession;
 
 #[derive(Clone, Copy, Debug)]
 pub enum RustToken {
-    KeywordAs,
-    KeywordAsync,
-    KeywordAwait,
-    KeywordBreak,
-    KeywordConst,
-    KeywordContinue,
-    KeywordCrate,
-    KeywordDo,
-    KeywordDyn,
-    KeywordElse,
-    KeywordEnum,
-    KeywordExtern,
-    KeywordFalse,
-    KeywordFn,
-    KeywordFor,
-    KeywordIf,
-    KeywordImpl,
-    KeywordIn,
-    KeywordLet,
-    KeywordLoop,
-    KeywordMacro,
-    KeywordMatch,
-    KeywordMod,
-    KeywordMove,
-    KeywordMut,
-    KeywordPub,
-    KeywordRef,
-    KeywordReturn,
-    KeywordSelf,
-    KeywordUSelf,
-    KeywordStatic,
-    KeywordStruct,
-    KeywordSuper,
-    KeywordTrait,
-    KeywordTrue,
-    KeywordTry,
-    KeywordType,
-    KeywordUnion,
-    KeywordUnsafe,
-    KeywordUse,
-    KeywordWhere,
-    KeywordWhile,
-    KeywordYield,
+    As,
+    Async,
+    Await,
+    Break,
+    Const,
+    Continue,
+    Crate,
+    Do,
+    Dyn,
+    Else,
+    Enum,
+    Extern,
+    False,
+    Fn,
+    For,
+    If,
+    Impl,
+    In,
+    Let,
+    Loop,
+    Macro,
+    Match,
+    Mod,
+    Move,
+    Mut,
+    Pub,
+    Ref,
+    Return,
+    LSelf,
+    USelf,
+    Static,
+    Struct,
+    Super,
+    Trait,
+    True,
+    Try,
+    Type,
+    Union,
+    Unsafe,
+    Use,
+    Where,
+    While,
+    Yield,
 
     NumType,
     BasicType,
@@ -452,11 +452,11 @@ impl lady_deirdre::lexis::Token for RustToken {
                     // 'a' 'w' 'a' 'i' 't'
                     if session.character() == 's' {
                         session.advance();
-                        word!(session, KeywordAs);
-                        word!(session, KeywordAsync, 'y', 'n', 'c');
+                        word!(session, As);
+                        word!(session, Async, 'y', 'n', 'c');
                     } else if session.character() == 'w' {
                         session.advance();
-                        word!(session, KeywordAwait, 'a', 'i', 't');
+                        word!(session, Await, 'a', 'i', 't');
                     }
                     word!(session, Identifier);
                     state = 5usize;
@@ -466,7 +466,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                     // 'b' 'o' 'o' 'l'
                     if session.character() == 'r' {
                         session.advance();
-                        word!(session, KeywordBreak, 'e', 'a', 'k');
+                        word!(session, Break, 'e', 'a', 'k');
                     } else if session.character() == 'o' {
                         session.advance();
                         word!(session, BasicType, 'o', 'l');
@@ -485,14 +485,14 @@ impl lady_deirdre::lexis::Token for RustToken {
                             session.advance();
                             if session.character() == 's' {
                                 session.advance();
-                                word!(session, KeywordConst, 't');
+                                word!(session, Const, 't');
                             } else if session.character() == 't' {
-                                word!(session, KeywordContinue, 'i', 'n', 'u', 'e');
+                                word!(session, Continue, 'i', 'n', 'u', 'e');
                             }
                         }
                     } else if session.character() == 'r' {
                         session.advance();
-                        word!(session, KeywordCrate, 'a', 't', 'e');
+                        word!(session, Crate, 'a', 't', 'e');
                     } else if session.character() == 'h' {
                         session.advance();
                         word!(session, BasicType, 'a', 'r');
@@ -505,10 +505,10 @@ impl lady_deirdre::lexis::Token for RustToken {
                     // 'd' 'y' 'n'
                     if session.character() == 'o' {
                         session.advance();
-                        word!(session, KeywordDo);
+                        word!(session, Do);
                     } else if session.character() == 'y' {
                         session.advance();
-                        word!(session, KeywordDyn, 'n');
+                        word!(session, Dyn, 'n');
                     }
                     word!(session, Identifier);
                     state = 5usize;
@@ -519,13 +519,13 @@ impl lady_deirdre::lexis::Token for RustToken {
                     // 'e' 'x' 't' 'e' 'r' 'n'
                     if session.character() == 'l' {
                         session.advance();
-                        word!(session, KeywordElse, 's', 'e');
+                        word!(session, Else, 's', 'e');
                     } else if session.character() == 'n' {
                         session.advance();
-                        word!(session, KeywordEnum, 'u', 'm');
+                        word!(session, Enum, 'u', 'm');
                     } else if session.character() == 'x' {
                         session.advance();
-                        word!(session, KeywordExtern, 't', 'e', 'r', 'n');
+                        word!(session, Extern, 't', 'e', 'r', 'n');
                     }
                     word!(session, Identifier);
                     state = 5usize;
@@ -538,13 +538,13 @@ impl lady_deirdre::lexis::Token for RustToken {
                     // 'f' '6' '4'
                     if session.character() == 'a' {
                         session.advance();
-                        word!(session, KeywordElse, 's', 'e');
+                        word!(session, Else, 's', 'e');
                     } else if session.character() == 'n' {
                         session.advance();
-                        word!(session, KeywordFn);
+                        word!(session, Fn);
                     } else if session.character() == 'o' {
                         session.advance();
-                        word!(session, KeywordFor, 'r');
+                        word!(session, For, 'r');
                     } else if session.character() == '3' {
                         session.advance();
                         word!(session, BasicType, '2');
@@ -567,13 +567,13 @@ impl lady_deirdre::lexis::Token for RustToken {
                     // 'i' '8'
                     if session.character() == 'f' {
                         session.advance();
-                        word!(session, KeywordIf);
+                        word!(session, If);
                     } else if session.character() == 'm' {
                         session.advance();
-                        word!(session, KeywordImpl, 'p', 'l');
+                        word!(session, Impl, 'p', 'l');
                     } else if session.character() == 'n' {
                         session.advance();
-                        word!(session, KeywordIn);
+                        word!(session, In);
                     } else if session.character() == 's' {
                         session.advance();
                         word!(session, BasicType, 'i', 'z', 'e');
@@ -604,10 +604,10 @@ impl lady_deirdre::lexis::Token for RustToken {
                     // 'l' 'o' 'o' 'p'
                     if session.character() == 'e' {
                         session.advance();
-                        word!(session, KeywordLet, 't');
+                        word!(session, Let, 't');
                     } else if session.character() == 'o' {
                         session.advance();
-                        word!(session, KeywordLoop, 'o', 'p');
+                        word!(session, Loop, 'o', 'p');
                     }
                     word!(session, Identifier);
                     state = 5usize;
@@ -622,23 +622,23 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         if session.character() == 'c' {
                             session.advance();
-                            word!(session, KeywordMacro, 'r', 'o');
+                            word!(session, Macro, 'r', 'o');
                         } else if session.character() == 'c' {
                             session.advance();
-                            word!(session, KeywordMatch, 'c', 'h');
+                            word!(session, Match, 'c', 'h');
                         }
                     } else if session.character() == 'o' {
                         session.advance();
                         if session.character() == 'd' {
                             session.advance();
-                            word!(session, KeywordMod);
+                            word!(session, Mod);
                         } else if session.character() == 'v' {
                             session.advance();
-                            word!(session, KeywordMove, 'e');
+                            word!(session, Move, 'e');
                         }
                     } else if session.character() == 'u' {
                         session.advance();
-                        word!(session, KeywordMut, 't');
+                        word!(session, Mut, 't');
                     }
                     word!(session, Identifier);
                     state = 5usize;
@@ -646,7 +646,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                 (1usize, 'p', 'u') => {
                     // 'p' 'u' 'b'
                     session.advance();
-                    word!(session, KeywordPub, 'b');
+                    word!(session, Pub, 'b');
                     word!(session, Identifier);
                     state = 5usize;
                 }
@@ -656,10 +656,10 @@ impl lady_deirdre::lexis::Token for RustToken {
                     session.advance();
                     if session.character() == 'f' {
                         session.advance();
-                        word!(session, KeywordRef);
+                        word!(session, Ref);
                     } else if session.character() == 't' {
                         session.advance();
-                        word!(session, KeywordReturn, 'u', 'r', 'n');
+                        word!(session, Return, 'u', 'r', 'n');
                     }
                     word!(session, Identifier);
                     state = 5usize;
@@ -667,7 +667,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                 (1usize, 'S', 'e') => {
                     // 'S' 'e' 'l' 'f'
                     session.advance();
-                    word!(session, KeywordUSelf, 'l', 'f');
+                    word!(session, USelf, 'l', 'f');
                     word!(session, Identifier);
                     state = 5usize;
                 }
@@ -679,20 +679,20 @@ impl lady_deirdre::lexis::Token for RustToken {
                     // 's' 'u' 'p' 'e' 'r'
                     if session.character() == 'e' {
                         session.advance();
-                        word!(session, KeywordSelf, 'l', 'f');
+                        word!(session, LSelf, 'l', 'f');
                     } else if session.character() == 't' {
                         session.advance();
                         if session.character() == 'a' {
                             session.advance();
-                            word!(session, KeywordStatic, 't', 'i', 'c');
+                            word!(session, Static, 't', 'i', 'c');
                         } else if session.character() == 'r' {
                             session.advance();
                             word!(session, BasicType);
-                            word!(session, KeywordStruct, 'u', 'c', 't');
+                            word!(session, Struct, 'u', 'c', 't');
                         }
                     } else if session.character() == 'u' {
                         session.advance();
-                        word!(session, KeywordSuper, 'p', 'e', 'r');
+                        word!(session, Super, 'p', 'e', 'r');
                     }
                     word!(session, Identifier);
                     state = 5usize;
@@ -706,17 +706,17 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         if session.character() == 'a' {
                             session.advance();
-                            word!(session, KeywordTrait, 'i', 't');
+                            word!(session, Trait, 'i', 't');
                         } else if session.character() == 'u' {
                             session.advance();
-                            word!(session, KeywordTrue, 'e');
+                            word!(session, True, 'e');
                         } else if session.character() == 'y' {
                             session.advance();
-                            word!(session, KeywordTry);
+                            word!(session, Try);
                         }
                     } else if session.character() == 'y' {
                         session.advance();
-                        word!(session, KeywordType, 'p', 'e');
+                        word!(session, Type, 'p', 'e');
                     }
                     word!(session, Identifier);
                     state = 5usize;
@@ -735,16 +735,16 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         if session.character() == 'i' {
                             session.advance();
-                            word!(session, KeywordUnion, 'o', 'n');
+                            word!(session, Union, 'o', 'n');
                         } else if session.character() == 's' {
                             session.advance();
-                            word!(session, KeywordUnsafe, 'a', 'f', 'e');
+                            word!(session, Unsafe, 'a', 'f', 'e');
                         }
                     } else if session.character() == 's' {
                         session.advance();
                         if session.character() == 'e' {
                             session.advance();
-                            word!(session, KeywordUse);
+                            word!(session, Use);
                         } else if session.character() == 'i' {
                             session.advance();
                             word!(session, BasicType, 'z', 'e');
@@ -778,10 +778,10 @@ impl lady_deirdre::lexis::Token for RustToken {
                     session.advance();
                     if session.character() == 'i' {
                         session.advance();
-                        word!(session, KeywordWhile, 'l', 'e');
+                        word!(session, While, 'l', 'e');
                     } else if session.character() == 'e' {
                         session.advance();
-                        word!(session, KeywordWhere, 'r', 'e');
+                        word!(session, Where, 'r', 'e');
                     }
                     word!(session, Identifier);
                     state = 5usize;
@@ -789,7 +789,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                 (1usize, 'y', 'i') => {
                     // 'y' 'i' 'e' 'l' 'd'
                     session.advance();
-                    word!(session, KeywordYield, 'e', 'l', 'd');
+                    word!(session, Yield, 'e', 'l', 'd');
                     word!(session, Identifier);
                     state = 5usize;
                 }
@@ -840,49 +840,49 @@ impl lady_deirdre::lexis::Token for RustToken {
 impl Display for RustToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
-            Self::KeywordAs => "KeywordAs",
-            Self::KeywordAsync => "KeywordAsync",
-            Self::KeywordAwait => "KeywordAwait",
-            Self::KeywordBreak => "KeywordBreak",
-            Self::KeywordConst => "KeywordConst",
-            Self::KeywordContinue => "KeywordContinue",
-            Self::KeywordCrate => "KeywordCrate",
-            Self::KeywordDo => "KeywordDo",
-            Self::KeywordDyn => "KeywordDyn",
-            Self::KeywordElse => "KeywordElse",
-            Self::KeywordEnum => "KeywordEnum",
-            Self::KeywordExtern => "KeywordExtern",
-            Self::KeywordFalse => "KeywordFalse",
-            Self::KeywordFn => "KeywordFn",
-            Self::KeywordFor => "KeywordFor",
-            Self::KeywordIf => "KeywordIf",
-            Self::KeywordImpl => "KeywordImpl",
-            Self::KeywordIn => "KeywordIn",
-            Self::KeywordLet => "KeywordLet",
-            Self::KeywordLoop => "KeywordLoop",
-            Self::KeywordMacro => "KeywordMacro",
-            Self::KeywordMatch => "KeywordMatch",
-            Self::KeywordMod => "KeywordMod",
-            Self::KeywordMove => "KeywordMove",
-            Self::KeywordMut => "KeywordMut",
-            Self::KeywordPub => "KeywordPub",
-            Self::KeywordRef => "KeywordRef",
-            Self::KeywordReturn => "KeywordReturn",
-            Self::KeywordSelf => "KeywordSelf",
-            Self::KeywordUSelf => "KeywordUSelf",
-            Self::KeywordStatic => "KeywordStatic",
-            Self::KeywordStruct => "KeywordStruct",
-            Self::KeywordSuper => "KeywordSuper",
-            Self::KeywordTrait => "KeywordTrait",
-            Self::KeywordTrue => "KeywordTrue",
-            Self::KeywordTry => "KeywordTry",
-            Self::KeywordType => "KeywordType",
-            Self::KeywordUnion => "KeywordUnion",
-            Self::KeywordUnsafe => "KeywordUnsafe",
-            Self::KeywordUse => "KeywordUse",
-            Self::KeywordWhere => "KeywordWhere",
-            Self::KeywordWhile => "KeywordWhile",
-            Self::KeywordYield => "KeywordYield",
+            Self::As => "As",
+            Self::Async => "Async",
+            Self::Await => "Await",
+            Self::Break => "Break",
+            Self::Const => "Const",
+            Self::Continue => "Continue",
+            Self::Crate => "Crate",
+            Self::Do => "Do",
+            Self::Dyn => "Dyn",
+            Self::Else => "Else",
+            Self::Enum => "Enum",
+            Self::Extern => "Extern",
+            Self::False => "False",
+            Self::Fn => "Fn",
+            Self::For => "For",
+            Self::If => "If",
+            Self::Impl => "Impl",
+            Self::In => "In",
+            Self::Let => "Let",
+            Self::Loop => "Loop",
+            Self::Macro => "Macro",
+            Self::Match => "Match",
+            Self::Mod => "Mod",
+            Self::Move => "Move",
+            Self::Mut => "Mut",
+            Self::Pub => "Pub",
+            Self::Ref => "Ref",
+            Self::Return => "Return",
+            Self::LSelf => "LSelf",
+            Self::USelf => "USelf",
+            Self::Static => "Static",
+            Self::Struct => "Struct",
+            Self::Super => "Super",
+            Self::Trait => "Trait",
+            Self::True => "True",
+            Self::Try => "Try",
+            Self::Type => "Type",
+            Self::Union => "Union",
+            Self::Unsafe => "Unsafe",
+            Self::Use => "Use",
+            Self::Where => "Where",
+            Self::While => "While",
+            Self::Yield => "Yield",
             Self::NumType => "NumType",
             Self::BasicType => "BasicType",
             Self::BinNumber => "BinNumber",

@@ -6,8 +6,6 @@ use lady_deirdre::lexis::{SourceCode, TokenBuffer, ToSpan};
 use lady_deirdre::syntax::Node;
 use lady_deirdre::syntax::SyntaxTree;
 
-
-use std::env;
 use std::fs;
 
 fn main() {
