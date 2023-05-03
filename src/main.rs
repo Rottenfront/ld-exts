@@ -14,15 +14,15 @@ fn main() {
         fs::read_to_string("txt.c").expect("Should have been able to read the file"),
     );
 
-    let tree = syntax_c::syntax::CNode::parse(code.cursor(..));
+    // let tree = syntax_c::syntax::CNode::parse(code.cursor(..));
 
-    println!(
-        "{}",
-        tree.errors()
-            .map(|error| format!("{}: {}", error.span().format(&code), error))
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
+    // println!(
+    //     "{}",
+    //     tree.errors()
+    //         .map(|error| format!("{}: {}", error.span().format(&code), error))
+    //         .collect::<Vec<_>>()
+    //         .join("\n")
+    // );
 
     println!("{}",
              code
