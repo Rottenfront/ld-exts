@@ -20,3 +20,33 @@
 // pub mod formatter;
 pub mod lexis;
 pub mod syntax;
+
+use lady_deirdre::lexis::{CodeContent, SourceCode, ToSpan, TokenBuffer};
+use lady_deirdre::syntax::Node;
+use lady_deirdre::syntax::SyntaxTree;
+
+use std::fs;
+
+pub fn main() {
+    let code = TokenBuffer::<lexis::RustToken>::from(
+        fs::read_to_string("txt.rs").expect("Should have been able to read the file"),
+    );
+
+    let tree = syntax::RustNode::parse(code.cursor(..));
+
+    println!(
+        "{}",
+        tree.errors()
+            .map(|error| format!("{}: {}", error.span().format(&code), error))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    println!(
+        "{}",
+        code.chunks(..)
+            .map(|chunk| chunk.token.to_string())
+            .collect::<Vec<_>>()
+            .join("|")
+    )
+}

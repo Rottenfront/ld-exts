@@ -77,9 +77,17 @@ pub enum CToken {
     While,
 
     #[precedence(3)]
-    #[rule(("0x" | "0b" | "Oo")? & ['0'..'9', 'A'..'F', 'a'..'f']+
-    & ('.' & ['0'..'9']+)? & ('L' | 'U' | 'l' | 'u' | 'f' | 'F')*)]
-    Number,
+    #[rule("0b" & ['0', '1']+ & ('L' | 'U' | 'l' | 'u')*)]
+    BinNumber,
+    #[precedence(3)]
+    #[rule("0o" & ['0'..'7']+ & ('L' | 'U' | 'l' | 'u')*)]
+    OctNumber,
+    #[rule(['0'..'9']+ & ('.' & ['0'..'9']+)?
+    & ('L' | 'U' | 'l' | 'u' | 'f' | 'F' | 'd' | 'D')*)]
+    DecNumber,
+    #[precedence(3)]
+    #[rule("0x" & ['0'..'9', 'A'..'F', 'a'..'f']+ & ('L' | 'U' | 'l' | 'u')*)]
+    HexNumber,
 
     // WHITESPACES
     #[rule([' ', '\t', '\r', '\x0b', '\x0c']+)]
@@ -123,15 +131,24 @@ pub enum CToken {
     String,
 
     // OPERATORS
-    #[rule(['-', '+', '&', '!'])]
+    #[precedence(2)]
+    #[rule(['-', '+', '&', '!'] | "<<" | ">>")]
     UnOp,
-    #[rule(['%', '^', '|'])]
+    #[rule(['%', '^', '|', '/'])]
     BinOp,
     #[precedence(3)]
-    #[rule((['>', '<'] & '='?) | "==")]
-    BoolOp,
+    #[rule(['>', '<', '='] & '=')]
+    BoolOp1,
+    #[rule(['>', '<'])]
+    BoolOp2,
+    #[precedence(3)]
+    #[rule("&&" | "||")]
+    LogicOp,
     #[rule('=')]
     Set,
+    #[precedence(3)]
+    #[rule("++" | "--")]
+    IncDec,
 
     // OTHER
     #[rule('*')]
@@ -145,7 +162,7 @@ pub enum CToken {
     Hash,
 
     #[precedence(3)]
-    #[rule(['+', '-', '/', '*', '^', '|', '%', '&'] & '=')]
+    #[rule((['+', '-', '/', '*', '^', '|', '%', '&'] & '=') | "<<=" | ">>=")]
     SetOp,
 
     // COMMENTS
@@ -200,9 +217,9 @@ impl Display for CToken {
             Self::Union => "Union",
             Self::TypeMod => "MOD",
             Self::BasicType => "TYPE",
-            Self::Number => "NUM",
+            Self::BinNumber | Self::DecNumber | Self::HexNumber | Self::OctNumber => "NUM",
             Self::Whitespace => " ",
-            Self::NewLine => " ",
+            Self::NewLine => "\n",
             Self::ParenthesisOpen => "(",
             Self::ParenthesisClose => ")",
             Self::BraceOpen => "{",
@@ -216,7 +233,10 @@ impl Display for CToken {
             Self::Semicolon => ";",
             Self::UnOp => "-",
             Self::BinOp => "+",
-            Self::BoolOp => "==",
+            Self::BoolOp1 => "==",
+            Self::BoolOp2 => ">",
+            Self::LogicOp => "&&",
+            Self::IncDec => "++",
             Self::Set => "=",
             Self::Star => "*",
             Self::Backslash => "\\",
@@ -230,6 +250,7 @@ impl Display for CToken {
             Self::String => "STR",
             Self::Other => "OTHER",
             Self::Mismatch => "MISS",
-        }.fmt(f)
+        }
+        .fmt(f)
     }
 }

@@ -17,12 +17,12 @@
  * SOFTWARE.
 */
 
+use super::lexis::CToken;
 use lady_deirdre::{
     lexis::TokenRef,
     syntax::{Node, NodeRef, SyntaxError},
 };
 use std::vec::Vec;
-use super::lexis::CToken;
 
 #[derive(Node, Debug, Clone)]
 #[token(CToken)]
@@ -30,22 +30,23 @@ use super::lexis::CToken;
 #[skip($Whitespace | $NewLine)]
 #[define(ACTION = (Block | ActionDef | ActionIdent | ActionOther | Return | Semicolon
     | Continue | Goto | Break | DoWhile | While | For | If | Switch | Default))]
+#[define(UN_OP = ($UnOp | $Star))]
+#[define(BIN_OP = ($UnOp | $Star | $BinOp | $BoolOp1 | $BoolOp2 | $LogicOp))]
+#[define(NUMBER = ($BinNumber | $OctNumber | $HexNumber | $DecNumber))]
 pub enum CNode {
     #[root]
     #[rule(items: (BasicDefinition | StructDef)*)]
     Root { items: Vec<NodeRef> },
-    
+
     #[rule((((tokens: $TypeMod)+ & (tokens: $BasicType)?) | (tokens: $BasicType)) & (tokens: $Star)*)]
-    BasicType {
-        tokens: Vec<TokenRef>,
-    },
+    BasicType { tokens: Vec<TokenRef> },
 
     #[rule((name: $Ident) & (ptr: $Star)*)]
-    Type {
-        name: TokenRef,
-        ptr: Vec<TokenRef>,
-    },
-    
+    Type { name: TokenRef, ptr: Vec<TokenRef> },
+
+    #[rule((mods: ($Const | $Register | $Volatile | $Auto | $Static))* & (type_: (Type | BasicType)))]
+    ModType { mods: Vec<TokenRef>, type_: NodeRef },
+
     #[rule((prefix: ($Const | $Register | $Volatile | $Auto | $Static))* & (type_: (Type | BasicType))
     & (name: $Ident) & (next: (FnDef | VarDef)))]
     BasicDefinition {
@@ -69,26 +70,25 @@ pub enum CNode {
         value: NodeRef,
     },
 
-    #[rule($BracketOpen & (num: $Number)? & $BracketClose)]
-    ArrayDef {
-        num: TokenRef,
-    },
+    #[rule($BracketOpen & (num: NUMBER)? & $BracketClose)]
+    ArrayDef { num: TokenRef },
 
-    #[rule($ParenthesisOpen & (
+    #[rule($ParenthesisOpen & ((mods: ($Const | $Register | $Volatile | $Auto | $Static))* &
         ((type_: BasicType) & (
             (name: $Ident) & ($Comma & (args: Arg))*
-            | ($Comma & (types: (BasicType | Type)))*
+            | ($Comma & (types: ModType))*
         ))
         | ((first: $Ident) & (
             ((ptr: $Star)+ & (
                 (name: $Ident) & ($Comma & (args: Arg))*
-                | ($Comma & (types: (BasicType | Type)))*
+                | ($Comma & (types: ModType))*
             ))
             | ((name: $Ident) & ($Comma & (args: Arg))*)
-            | ($Comma & (types: (BasicType | Type)))
+            | ($Comma & (types: ModType))
         ))
-    ) & $ParenthesisClose & (defs: BasicDefinition)* & ((block: Block) | $Semicolon))]
+    )? & $ParenthesisClose & (defs: BasicDefinition)* & ((block: Block) | $Semicolon))]
     FnDef {
+        mods: Vec<TokenRef>,
         type_: NodeRef,
         name: TokenRef,
         first: TokenRef,
@@ -99,14 +99,11 @@ pub enum CNode {
         defs: Vec<NodeRef>,
     },
 
-    #[rule((type_: (Type | BasicType)) & (name: $Ident))]
-    Arg {
-        type_: NodeRef,
-        name: TokenRef,
-    },
+    #[rule((type_: ModType) & (name: $Ident))]
+    Arg { type_: NodeRef, name: TokenRef },
 
     /* Structs */
-    #[rule($Struct & name: $Ident & ($BraceO & (fields: (StructDef | BasicDefinition))* & $BraceC)?
+    #[rule($Struct & name: $Ident & ($BraceOpen & (fields: (StructDef | BasicDefinition))* & $BraceClose)?
            & (defs: NextVar)* & $Semicolon)]
     StructDef {
         name: TokenRef,
@@ -118,40 +115,44 @@ pub enum CNode {
     /* Enums */
     // Enum,
     /* */
-
-    #[rule((name: $Ident) & (next: (Call | Field))? & (($Set | $OpWithSet) & (assign: Value))?)]
-    IdentVal { name: TokenRef, next: NodeRef, assign: NodeRef },
-    #[rule($ParenthO & ((values: Value) & ($Comma & (values: Value))*)? & $ParenthC)]
+    #[rule((name: $Ident) & (next: (Call | Field))? & (($Set | $SetOp) & (assign: Value))?)]
+    IdentVal {
+        name: TokenRef,
+        next: NodeRef,
+        assign: NodeRef,
+    },
+    #[rule($ParenthesisOpen & ((values: Value) & ($Comma & (values: Value))*)? & $ParenthesisClose)]
     Call { values: Vec<NodeRef> },
     #[rule(($Point & (path: $Ident))+)]
     Field { path: Vec<TokenRef> },
 
-    #[rule(val: $Number)]
+    #[rule(val: NUMBER)]
     Number { val: TokenRef },
     #[rule((val: $String)+)]
     String { val: Vec<TokenRef> },
     #[rule((val: $Char))]
     Char { val: TokenRef },
-    #[rule($BraceO & (values: StructValField)*{$Comma} & $BraceC)]
+    #[rule($BraceOpen & (values: StructValField)*{$Comma} & $BraceClose)]
     StructVal { values: Vec<NodeRef> },
     #[rule(($Point & (name: $Ident) & $Set)? & (value: Value))]
-    StructValField {
-        name: TokenRef,
-        value: NodeRef,
-    },
+    StructValField { name: TokenRef, value: NodeRef },
 
     #[rule(
         (value: (String | Number | Char | IdentVal | StructVal))
-        | ((prefix: $UnOp) & (value: OneValue))
-        | ($ParenthO & (
-            ((type_: BasicType) & $ParenthC & (value: OneValue))
-            | ((prefix: ($IncDec)+) & (value: IdentInParenthesis) & $ParenthC)
+        | ((prefix: UN_OP) & (value: OneValue))
+        | ($ParenthesisOpen & (
+            ((type_: BasicType) & $ParenthesisClose & (value: OneValue))
+            | ((prefix: ($IncDec)+) & (value: IdentInParenthesis) & $ParenthesisClose)
             | ((first: $Ident) & (
-                ((ptr: $Star)+ & $ParenthC & (value: OneValue))
-                | ((value: (Call | Field)) & ((op: ($BinOp | $UnOp | $LogicOp | $BoolOp))
-                    & (next: Value))? & $ParenthC)
-                | ($ParenthC & (op: ($BinOp | $LogicOp | $BoolOp))? & (value: OneValue))
-                | ((op: ($BinOp | $UnOp | $LogicOp | $BoolOp)) & (next: Value) & $ParenthC)
+                ((op: $Star) & (
+                    ($ParenthesisClose & (value: OneValue))
+                    /*| ((ptr: $Star)+ & ((next: Value) | ($ParenthesisClose & (value: OneValue))))*/
+                ))
+                | ((value: (Call | Field)) & ((op: ($BinOp | $BoolOp1 | $BoolOp2 | $LogicOp))
+                    & (next: Value))? & $ParenthesisClose)
+                | ($ParenthesisClose & (op: ($BinOp | $LogicOp | $BoolOp1 | $BoolOp2))?
+                    & (value: OneValue))
+                | ((op: ($UnOp | $BinOp | $BoolOp1 | $BoolOp2 | $LogicOp)) & (next: Value) & $ParenthesisClose)
             )))
             | ((prefix: ($IncDec)+) & (value: IdentInParenthesis))
         )
@@ -160,30 +161,26 @@ pub enum CNode {
         prefix: Vec<TokenRef>,
         first: TokenRef,
         type_: NodeRef,
-        ptr: Vec<TokenRef>,
+        // ptr: Vec<TokenRef>,
         op: TokenRef,
         value: NodeRef,
         next: NodeRef,
     },
 
-    #[rule($ParenthO & (value: (FieldFull | IdentInParenthesis)) & $ParenthC)]
-    IdentInParenthesis {
-        value: NodeRef
-    },
+    #[rule($ParenthesisOpen & (value: (FieldFull | IdentInParenthesis)) & $ParenthesisClose)]
+    IdentInParenthesis { value: NodeRef },
 
     #[rule((path: $Ident)+{$Point})]
     FieldFull { path: Vec<TokenRef> },
 
-    #[rule((values: OneValue)+{ops: ($BinOp | $UnOp | $BoolOp | $LogicOp)})]
+    #[rule((values: OneValue)+{ops: BIN_OP})]
     Value {
         values: Vec<NodeRef>,
         ops: Vec<TokenRef>,
     },
 
-    #[rule($BraceO & (actions: ACTION)* & $BraceC)]
-    Block {
-        actions: Vec<NodeRef>,
-    },
+    #[rule($BraceOpen & (actions: ACTION)* & $BraceClose)]
+    Block { actions: Vec<NodeRef> },
 
     #[rule((first: $Ident) & (((call: Call) | ((field: Field)? & ($Set & (value: Value))?)
     | ((ptr: $Star*) & (name: $Ident) & ($Set & (value: Value))?) & $Semicolon) | (label: $Colon)))]
@@ -197,22 +194,16 @@ pub enum CNode {
         label: TokenRef,
     },
 
-    #[rule(
-        ((tokens: $Const) & (tokens: ($Long | $Short | $Signed | $Unsigned))*
-        & (tokens: $Star)* & (tokens: $Ident))
-        | ((tokens: ($Long | $Short | $Signed | $Unsigned)+) & (
-            ((tokens: $Ident) & (tokens: ($Star* & $Ident))?)
-            | ((tokens: $Star+) & (tokens: $Ident))
-        )) & (arr: ($BracketO & $Number? & $BracketC))?
-        & ($Set & (value: Value))? & $Semicolon
-    )]
+    #[rule((((prefix: ($Const | $Register | $Volatile | $Auto | $Static))+ & (type_: (Type | BasicType)))
+    | ((type_: BasicType))) & (name: $Ident) & (def: VarDef))]
     ActionDef {
-        tokens: Vec<TokenRef>,
-        arr: Vec<TokenRef>,
-        value: NodeRef,
+        prefix: Vec<TokenRef>,
+        type_: NodeRef,
+        name: TokenRef,
+        def: NodeRef,
     },
 
-    #[rule((value: StartValue) & ((op: ($BinOp | $UnOp | $BoolOp | $LogicOp)) & (next: Value))? & $Semicolon)]
+    #[rule((value: StartValue) & ((op: BIN_OP) & (next: Value))? & $Semicolon)]
     ActionOther {
         value: NodeRef,
         op: TokenRef,
@@ -221,26 +212,29 @@ pub enum CNode {
 
     #[rule(
         (value: (String | Number | Char))
-        | ((prefix: $UnOp) & (value: OneValue))
-        | ($ParenthO & 
-            (((_type: ($Long | $Short | $Signed | $Unsigned)+)
-                & (_type: $Ident)? & (_type: $Star)* & $ParenthC & (value: OneValue)
+        | ((prefix: UN_OP) & (value: OneValue))
+        | ($ParenthesisOpen &
+            (((_type: BasicType) & $ParenthesisClose & (value: OneValue)
             )
-            | ((prefix: ($IncDec)+) & (value: IdentInParenthesis) & $ParenthC)
+            | ((prefix: ($IncDec)+) & (value: IdentInParenthesis) & $ParenthesisClose)
             | ((first: $Ident) & (
-                ((_type: $Star)+ & $ParenthC & (value: OneValue))
-                | ((value: (Call | Field)) & ((op: ($BinOp | $UnOp | $LogicOp | $BoolOp))
-                    & (next: Value))? & $ParenthC)
-                | ($ParenthC & (op: ($BinOp | $LogicOp | $BoolOp))? & (value: OneValue))
-                | ((op: ($BinOp | $UnOp | $LogicOp | $BoolOp)) & (next: Value) & $ParenthC)
+                ((ptr: $Star)+ & $ParenthesisClose & (value: OneValue))
+                | ((value: (Call | Field)) & ((op: ($BinOp | $LogicOp | $BoolOp1 | $BoolOp2))
+                    & (next: Value))? & $ParenthesisClose)
+                | ($ParenthesisClose & (op: ($BinOp | $LogicOp | $BoolOp1 | $BoolOp2))? & (value: OneValue))
+                | ((op: ($BinOp | $LogicOp | $BoolOp1 | $BoolOp2)) & (next: Value) & $ParenthesisClose)
             )))
             | ((prefix: ($IncDec)+) & (value: IdentInParenthesis))
         )
+        | ((prefix: $IncDec)+ & (value: IdentInParenthesis) & (postfix: $IncDec)*)
+
     )]
     StartValue {
         prefix: Vec<TokenRef>,
+        postfix: Vec<TokenRef>,
         first: TokenRef,
-        _type: Vec<TokenRef>,
+        _type: NodeRef,
+        ptr: Vec<TokenRef>,
         op: TokenRef,
         value: NodeRef,
         next: NodeRef,
@@ -255,40 +249,35 @@ pub enum CNode {
     #[rule($Break & $Semicolon)]
     Break,
     #[rule($Do & (action: ACTION) & $While
-    & $ParenthO & (cond: Value) & $ParenthC & $Semicolon)]
+    & $ParenthesisOpen & (cond: Value) & $ParenthesisClose & $Semicolon)]
     DoWhile { cond: NodeRef, action: NodeRef },
-    #[rule($While & $ParenthO & (cond: Value) & $ParenthC & (action: ACTION))]
+    #[rule($While & $ParenthesisOpen & (cond: Value) & $ParenthesisClose & (action: ACTION))]
     While { cond: NodeRef, action: NodeRef },
 
-    #[rule(((tokens: $Const)? & (
-        (tokens: ($Long | $Short | $Signed | $Unsigned))+ & (
-            (tokens: $Star+) & (tokens: $Ident)
-            | (tokens: $Ident & ((tokens: $Star*) & (tokens: $Ident))?)
-        )
-        | ((tokens: $Ident) & (tokens: $Star*) & (tokens: $Ident))
-    ) & (arr: ($BracketO & $Number? & $BracketC))? & ($Set & (value: Value))?
-    & ($Comma & (nexts: NextVar)+{$Comma})?)? & $Semicolon)]
+    #[rule(((prefix: ($Const | $Register | $Volatile | $Auto | $Static))*
+    & (type_: (Type | BasicType)) & (name: $Ident) & (def: VarDef)) | $Semicolon)]
     DefFor {
-        tokens: Vec<TokenRef>,
-        arr: Vec<TokenRef>,
-        value: NodeRef,
-        nexts: Vec<NodeRef>,
+        prefix: Vec<TokenRef>,
+        type_: NodeRef,
+        name: TokenRef,
+        def: NodeRef,
     },
 
-    #[rule($For & $ParenthO & (def: DefFor) & (cond: Value) & $Semicolon
-    & (actions: ACTION*) & $ParenthC & $Semicolon)]
+    #[rule($For & $ParenthesisOpen & (def: DefFor) & (cond: Value) & $Semicolon
+    & (actions: ACTION*) & $ParenthesisClose & $Semicolon)]
     For {
         def: NodeRef,
         cond: NodeRef,
         actions: Vec<NodeRef>,
     },
-    #[rule($If & $ParenthO & (cond: Value) & $ParenthC & (action: ACTION))]
-    If {
-        cond: NodeRef,
-        action: NodeRef,
+    #[rule($If & $ParenthesisOpen & (cond: Value) & $ParenthesisClose & (action: ACTION))]
+    If { cond: NodeRef, action: NodeRef },
+    #[rule($Switch & $ParenthesisOpen & (value: Value) & $ParenthesisClose
+    & $BraceOpen & (actions: (ACTION | Case)*) & $BraceClose)]
+    Switch {
+        value: NodeRef,
+        actions: Vec<NodeRef>,
     },
-    #[rule($Switch & $ParenthO & (value: Value) & $ParenthC & $BraceO & (actions: (ACTION | Case)*) & $BraceC)]
-    Switch { value: NodeRef, actions: Vec<NodeRef> },
     #[rule($Case & (cond: Value) & $Colon)]
     Case { cond: NodeRef },
     #[rule($Default & $Semicolon)]
@@ -302,4 +291,4 @@ pub enum CNode {
 
 
 
- */
+*/
