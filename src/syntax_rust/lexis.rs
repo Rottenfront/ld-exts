@@ -66,22 +66,18 @@ pub enum RustToken {
     While,
     Yield,
 
-    NumType,
     BasicType,
 
-    BinNumber,
-    OctNumber,
-    DecNumber,
-    HexNumber,
+    Number,
 
-    Whitespace, // ' ' | '\t' | '\r' | '\x0b' | '\x0c'
-    NewLine,    // '\n'
+    Whitespace, // ' ' '\t' '\x0b' '\x0c'
+    NewLine,    // '\n' '\r'
 
-    ParenthesisOpen,  // (
-    ParenthesisClose, // )
+    Open,  // (
+    Close, // )
 
-    AngleBracketOpen,  // <
-    AngleBracketClose, // >
+    Less,    // <
+    Greater, // >
 
     BraceOpen,  // {
     BraceClose, // }
@@ -90,8 +86,6 @@ pub enum RustToken {
     BracketClose, // ]
 
     Comma, // ,
-    Pipe,  // |
-
     Point, // .
     Range, // ..
 
@@ -101,35 +95,31 @@ pub enum RustToken {
     Colon,       // :
     DoubleColon, // ::
 
-    Dollar,                // $
-    Semicolon,             // ;
-    Operator,              // - % ^
-    BoolOperator,          // >= == <=
-    Add,                   // +
-    Assign,                // =
-    Amp,                   // &
-    Star,                  // *
-    Slash,                 // /
-    Tilda,                 // ~
-    At,                    // @
-    Backslash,             // \\
-    Bang,                  // !
-    QuestMark,             // ?
-    Hash,                  // #
-    HashBang,              // #!
-    Arrow,                 // ->
-    AssignWithOperation,   // += -= /= *= ^= |= %= &=
-    SingleComment,         // //
-    MultilineCommentOpen,  // /*
-    MultilineCommentClose, // */
+    Dollar,        // $
+    Semicolon,     // ;
+    BinOp,         // % ^ && || << >> / >= == <=
+    Add,           // +
+    Sub,           // -
+    Set,           // =
+    Refer,         // & *
+    Tilda,         // ~
+    At,            // @
+    Backslash,     // \\
+    Bang,          // !
+    Quest,         // ?
+    Hash,          // #
+    HashBang,      // #!
+    Arrow,         // ->
+    SetOp,         // += -= /= *= ^= |= %= &= <<= >>=
+    SingleComment, // //
+    CommentOpen,   // /*
+    CommentClose,  // */
 
     Escape, // '\\' & (['\'', '"', '\\', '/', 'b', 'f', 'n', 'r', 't', '\n', '0'] | ('x' & HEX & HEX) | ("u{" & HEX & HEX & HEX & HEX & '}'))
 
-    Identifier,
+    Ident,
 
     String, // todo: implement String in lexer
-
-    Underscore,
 }
 
 macro_rules! advance {
@@ -196,79 +186,46 @@ impl lady_deirdre::lexis::Token for RustToken {
             session.advance();
             let next = session.character();
             match (state, current, next) {
-                (1usize, '0', 'b') => {
-                    session.advance();
-                    while session.character() == '0'
-                        || session.character() == '1'
-                        || session.character() == '_'
+                (1usize, '0'..='9', _) => loop {
+                    if session.character() == ' '
+                        || session.character() == '\t'
+                        || session.character() == '\r'
+                        || session.character() == '\x0b'
+                        || session.character() == '\n'
+                        || session.character() == '('
+                        || session.character() == ')'
+                        || session.character() == '\x0c'
+                        || session.character() == '<'
+                        || session.character() == '>'
+                        || session.character() == '{'
+                        || session.character() == '}'
+                        || session.character() == '['
+                        || session.character() == ']'
+                        || session.character() == ','
+                        || session.character() == '|'
+                        || session.character() == '\''
+                        || session.character() == ':'
+                        || session.character() == '$'
+                        || session.character() == ';'
+                        || session.character() == '-'
+                        || session.character() == '%'
+                        || session.character() == '^'
+                        || session.character() == '='
+                        || session.character() == '+'
+                        || session.character() == '&'
+                        || session.character() == '*'
+                        || session.character() == '/'
+                        || session.character() == '~'
+                        || session.character() == '@'
+                        || session.character() == '\\'
+                        || session.character() == '!'
+                        || session.character() == '?'
+                        || session.character() == '#'
                     {
-                        session.advance();
+                        session.submit();
+                        return Self::Number;
                     }
-                    if session.character() == 'i'
-                        || session.character() == 'u'
-                        || session.character() == 'f'
-                    {
-                        while (session.character() >= '0' && session.character() <= '9')
-                            || (session.character() >= 'a' && session.character() <= 'z')
-                        {
-                            session.advance();
-                        }
-                    }
-                    session.submit();
-                    return Self::BinNumber;
-                }
-                (1usize, '0', 'o') => {
-                    session.advance();
-                    while (session.character() >= '0' && session.character() <= '7')
-                        || session.character() == '_'
-                    {
-                        session.advance();
-                    }
-                    if session.character() == 'i'
-                        || session.character() == 'u'
-                        || session.character() == 'f'
-                    {
-                        while (session.character() >= '0' && session.character() <= '9')
-                            || (session.character() >= 'a' && session.character() <= 'z')
-                        {
-                            session.advance();
-                        }
-                    }
-                    session.submit();
-                    return Self::OctNumber;
-                }
-                (1usize, '0', 'x') => {
-                    session.advance();
-                    while (session.character() >= '0' && session.character() <= '9')
-                        || (session.character() >= 'a' && session.character() <= 'f')
-                        || (session.character() >= 'A' && session.character() <= 'F')
-                        || session.character() == '_'
-                    {
-                        session.advance();
-                    }
-                    if session.character() == 'i'
-                        || session.character() == 'u'
-                        || session.character() == 'f'
-                    {
-                        while (session.character() >= '0' && session.character() <= '9')
-                            || (session.character() >= 'a' && session.character() <= 'z')
-                        {
-                            session.advance();
-                        }
-                    }
-                    session.submit();
-                    return Self::HexNumber;
-                }
-
-                (1usize | 2usize, '0'..='9', '0'..='9' | '.') => state = 2usize,
-                (1usize, '0'..='9', _) => {
-                    session.submit();
-                    return Self::DecNumber;
-                }
-                (2usize, '0'..='9' | '.', _) => {
-                    session.submit();
-                    return Self::DecNumber;
-                }
+                },
 
                 (1usize | 3usize, '\t' | '\u{b}'..='\r' | ' ', '\t' | '\u{b}'..='\r' | ' ') => {
                     state = 3usize
@@ -297,6 +254,16 @@ impl lady_deirdre::lexis::Token for RustToken {
                     session.submit();
                     return Self::DoubleColon;
                 }
+                (1usize, '&', '&') => {
+                    session.advance();
+                    session.submit();
+                    return Self::BinOp;
+                }
+                (1usize, '|', '|') => {
+                    session.advance();
+                    session.submit();
+                    return Self::BinOp;
+                }
                 (1usize, '#', '!') => {
                     session.advance();
                     session.submit();
@@ -310,12 +277,32 @@ impl lady_deirdre::lexis::Token for RustToken {
                 (1usize, '+' | '-' | '/' | '*' | '^' | '|' | '%' | '&', '=') => {
                     session.advance();
                     session.submit();
-                    return Self::AssignWithOperation;
+                    return Self::SetOp;
+                }
+                (1usize, '>', '>') => {
+                    session.advance();
+                    if session.character() == '=' {
+                        session.advance();
+                        session.submit();
+                        return Self::SetOp;
+                    }
+                    session.submit();
+                    return Self::BinOp;
+                }
+                (1usize, '<', '<') => {
+                    session.advance();
+                    if session.character() == '=' {
+                        session.advance();
+                        session.submit();
+                        return Self::SetOp;
+                    }
+                    session.submit();
+                    return Self::BinOp;
                 }
                 (1usize, '>' | '=' | '<', '=') => {
                     session.advance();
                     session.submit();
-                    return Self::BoolOperator;
+                    return Self::BinOp;
                 }
                 (1usize, '/', '/') => {
                     session.advance();
@@ -325,28 +312,28 @@ impl lady_deirdre::lexis::Token for RustToken {
                 (1usize, '/', '*') => {
                     session.advance();
                     session.submit();
-                    return Self::MultilineCommentOpen;
+                    return Self::CommentOpen;
                 }
                 (1usize, '*', '/') => {
                     session.advance();
                     session.submit();
-                    return Self::MultilineCommentClose;
+                    return Self::CommentClose;
                 }
                 (1usize, '(', _) => {
                     session.submit();
-                    return Self::ParenthesisOpen;
+                    return Self::Open;
                 }
                 (1usize, ')', _) => {
                     session.submit();
-                    return Self::ParenthesisClose;
+                    return Self::Close;
                 }
                 (1usize, '<', _) => {
                     session.submit();
-                    return Self::AngleBracketOpen;
+                    return Self::Less;
                 }
                 (1usize, '>', _) => {
                     session.submit();
-                    return Self::AngleBracketClose;
+                    return Self::Greater;
                 }
                 (1usize, '{', _) => {
                     session.submit();
@@ -384,10 +371,6 @@ impl lady_deirdre::lexis::Token for RustToken {
                     session.submit();
                     return Self::Comma;
                 }
-                (1usize, '|', _) => {
-                    session.submit();
-                    return Self::Pipe;
-                }
                 (1usize, ';', _) => {
                     session.submit();
                     return Self::Semicolon;
@@ -398,19 +381,15 @@ impl lady_deirdre::lexis::Token for RustToken {
                 }
                 (1usize, '=', _) => {
                     session.submit();
-                    return Self::Assign;
+                    return Self::Set;
                 }
-                (1usize, '&', _) => {
+                (1usize, '&' | '*', _) => {
                     session.submit();
-                    return Self::Amp;
+                    return Self::Refer;
                 }
-                (1usize, '*', _) => {
+                (1usize, '/' | '%' | '^' | '|', _) => {
                     session.submit();
-                    return Self::Star;
-                }
-                (1usize, '/', _) => {
-                    session.submit();
-                    return Self::Slash;
+                    return Self::BinOp;
                 }
                 (1usize, '~', _) => {
                     session.submit();
@@ -426,7 +405,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                 }
                 (1usize, '?', _) => {
                     session.submit();
-                    return Self::QuestMark;
+                    return Self::Quest;
                 }
                 (1usize, '#', _) => {
                     session.submit();
@@ -463,7 +442,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         word!(session, Await, 'a', 'i', 't');
                     }
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 'b', _) => {
@@ -476,7 +455,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         word!(session, BasicType, 'o', 'l');
                     }
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 'c', _) => {
@@ -502,7 +481,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         word!(session, BasicType, 'a', 'r');
                     }
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 'd', _) => {
@@ -515,7 +494,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         word!(session, Dyn, 'n');
                     }
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 'e', _) => {
@@ -532,7 +511,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         word!(session, Extern, 't', 'e', 'r', 'n');
                     }
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 'f', _) => {
@@ -557,7 +536,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         word!(session, BasicType, '4');
                     }
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 'i', _) => {
@@ -601,7 +580,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         word!(session, BasicType, '8');
                     }
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 'l', _) => {
@@ -614,7 +593,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         word!(session, Loop, 'o', 'p');
                     }
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 'm', _) => {
@@ -645,14 +624,14 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         word!(session, Mut, 't');
                     }
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 'p', 'u') => {
                     // 'p' 'u' 'b'
                     session.advance();
                     word!(session, Pub, 'b');
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 'r', 'e') => {
@@ -666,14 +645,14 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         word!(session, Return, 'u', 'r', 'n');
                     }
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 'S', 'e') => {
                     // 'S' 'e' 'l' 'f'
                     session.advance();
                     word!(session, USelf, 'l', 'f');
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 's', _) => {
@@ -699,7 +678,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         word!(session, Super, 'p', 'e', 'r');
                     }
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 't', _) => {
@@ -723,7 +702,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         word!(session, Type, 'p', 'e');
                     }
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 'u', _) => {
@@ -773,7 +752,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         word!(session, BasicType, '8');
                     }
-                    word!(session, Identifier);
+                    word!(session, Ident);
 
                     state = 5usize;
                 }
@@ -788,18 +767,14 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.advance();
                         word!(session, Where, 'r', 'e');
                     }
-                    word!(session, Identifier);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, 'y', 'i') => {
                     // 'y' 'i' 'e' 'l' 'd'
                     session.advance();
                     word!(session, Yield, 'e', 'l', 'd');
-                    word!(session, Identifier);
-                    state = 5usize;
-                }
-                (1usize, '_', _) => {
-                    word!(session, Underscore);
+                    word!(session, Ident);
                     state = 5usize;
                 }
                 (1usize, '"', ch) => {
@@ -863,111 +838,103 @@ impl lady_deirdre::lexis::Token for RustToken {
                         || ch == '#'
                     {
                         session.submit();
-                        return Self::Identifier;
+                        return Self::Ident;
                     }
                 }
                 _ => break,
             }
         }
-        Self::Identifier
+        Self::Ident
     }
 }
 
 impl Display for RustToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
-            Self::As => "As",
-            Self::Async => "Async",
-            Self::Await => "Await",
-            Self::Break => "Break",
-            Self::Const => "Const",
-            Self::Continue => "Continue",
-            Self::Crate => "Crate",
-            Self::Do => "Do",
-            Self::Dyn => "Dyn",
-            Self::Else => "Else",
-            Self::Enum => "Enum",
-            Self::Extern => "Extern",
-            Self::False => "False",
-            Self::Fn => "Fn",
-            Self::For => "For",
-            Self::If => "If",
-            Self::Impl => "Impl",
-            Self::In => "In",
-            Self::Let => "Let",
-            Self::Loop => "Loop",
-            Self::Macro => "Macro",
-            Self::Match => "Match",
-            Self::Mod => "Mod",
-            Self::Move => "Move",
-            Self::Mut => "Mut",
-            Self::Pub => "Pub",
-            Self::Ref => "Ref",
-            Self::Return => "Return",
-            Self::LSelf => "LSelf",
-            Self::USelf => "USelf",
-            Self::Static => "Static",
-            Self::Struct => "Struct",
-            Self::Super => "Super",
-            Self::Trait => "Trait",
-            Self::True => "True",
-            Self::Try => "Try",
-            Self::Type => "Type",
-            Self::Union => "Union",
-            Self::Unsafe => "Unsafe",
-            Self::Use => "Use",
-            Self::Where => "Where",
-            Self::While => "While",
-            Self::Yield => "Yield",
-            Self::NumType => "NumType",
-            Self::BasicType => "BasicType",
-            Self::BinNumber => "BinNumber",
-            Self::OctNumber => "OctNumber",
-            Self::DecNumber => "DecNumber",
-            Self::HexNumber => "HexNumber",
-            Self::String => "String",
-            Self::Identifier => "Identifier",
-            Self::ParenthesisOpen => "ParenthesisOpen",
-            Self::ParenthesisClose => "ParenthesisClose",
-            Self::AngleBracketOpen => "AngleBracketOpen",
-            Self::AngleBracketClose => "AngleBracketClose",
-            Self::BraceOpen => "BraceOpen",
-            Self::BraceClose => "BraceClose",
-            Self::BracketOpen => "BracketOpen",
-            Self::BracketClose => "BracketClose",
-            Self::Underscore => "Underscore",
-            Self::Comma => "Comma",
-            Self::Point => "Point",
-            Self::Pipe => "Pipe",
-            Self::BoolOperator => "BoolOperator",
-            Self::Range => "Range",
-            Self::Apostrophe => "Apostrophe",
-            Self::AsciiChar => "AsciiChar",
-            Self::DoubleColon => "DoubleColon",
-            Self::Colon => "Colon",
-            Self::Dollar => "Dollar",
-            Self::Semicolon => "Semicolon",
-            Self::Operator => "Operator",
-            Self::Add => "Add",
-            Self::Assign => "Assign",
-            Self::Amp => "Amp",
-            Self::Star => "Star",
-            Self::Slash => "Slash",
-            Self::Tilda => "Tilda",
-            Self::At => "At",
-            Self::Backslash => "Backslash",
-            Self::Escape => "Escape",
-            Self::Bang => "Bang",
-            Self::QuestMark => "QuestMark",
-            Self::Hash => "Hash",
-            Self::HashBang => "HashBang",
-            Self::Arrow => "Arrow",
-            Self::AssignWithOperation => "AssignWithOperation",
-            Self::Whitespace => "Whitespace",
-            Self::NewLine => "NewLine",
-            Self::SingleComment => "SingleComment",
-            Self::MultilineCommentOpen => "MultilineCommentOpen",
-            Self::MultilineCommentClose => "MultilineCommentClose",
+            Self::As => "as",
+            Self::Async => "async",
+            Self::Await => "await",
+            Self::Break => "break",
+            Self::Const => "const",
+            Self::Continue => "continue",
+            Self::Crate => "crate",
+            Self::Do => "do",
+            Self::Dyn => "dyn",
+            Self::Else => "else",
+            Self::Enum => "enum",
+            Self::Extern => "extern",
+            Self::False => "false",
+            Self::Fn => "fn",
+            Self::For => "for",
+            Self::If => "if",
+            Self::Impl => "impl",
+            Self::In => "in",
+            Self::Let => "let",
+            Self::Loop => "loop",
+            Self::Macro => "macro",
+            Self::Match => "match",
+            Self::Mod => "mod",
+            Self::Move => "move",
+            Self::Mut => "mut",
+            Self::Pub => "pub",
+            Self::Ref => "ref",
+            Self::Return => "return",
+            Self::LSelf => "self",
+            Self::USelf => "Self",
+            Self::Static => "static",
+            Self::Struct => "struct",
+            Self::Super => "super",
+            Self::Trait => "trait",
+            Self::True => "true",
+            Self::Try => "try",
+            Self::Type => "type",
+            Self::Union => "union",
+            Self::Unsafe => "unsafe",
+            Self::Use => "use",
+            Self::Where => "where",
+            Self::While => "while",
+            Self::Yield => "yield",
+            Self::BasicType => "usize",
+            Self::Number => "0x0abcd",
+            Self::String => "STR",
+            Self::Ident => "IDENT",
+            Self::Open => "(",
+            Self::Close => ")",
+            Self::Less => "<",
+            Self::Greater => ">",
+            Self::BraceOpen => "{",
+            Self::BraceClose => "}",
+            Self::BracketOpen => "[",
+            Self::BracketClose => "]",
+            Self::Comma => ",",
+            Self::Point => ".",
+            Self::Range => "..",
+            Self::Apostrophe => "'",
+            Self::AsciiChar => "b'",
+            Self::DoubleColon => "::",
+            Self::Colon => ":",
+            Self::Dollar => "$",
+            Self::Semicolon => ";",
+            Self::BinOp => "^",
+            Self::Add => "+",
+            Self::Sub => "-",
+            Self::Set => "=",
+            Self::Refer => "&",
+            Self::Tilda => "~",
+            Self::At => "@",
+            Self::Backslash => "\\",
+            Self::Escape => "\\n",
+            Self::Bang => "!",
+            Self::Quest => "?",
+            Self::Hash => "#",
+            Self::HashBang => "#!",
+            Self::Arrow => "->",
+            Self::SetOp => "+=",
+            Self::Whitespace => " ",
+            Self::NewLine => "\n",
+            Self::SingleComment => "//",
+            Self::CommentOpen => "/*",
+            Self::CommentClose => "*/",
         }
         .fmt(f)
     }

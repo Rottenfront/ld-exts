@@ -41,7 +41,7 @@ pub fn main() {
             .collect::<Vec<_>>()
             .join("\n")
     );
-
+    
     println!(
         "{}",
         code.chunks(..)
