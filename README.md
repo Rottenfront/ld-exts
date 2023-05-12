@@ -6,7 +6,6 @@ Parsers based on lady-deirdre project
 
 - [Lady Deirdre](https://www.github.com/eliah-lakhin/lady-deirdre)
 - Alternative - [Tree Sitter](https://www.github.com/tree-sitter)
-- Config for NeoVim - [LunarVim](https://www.lunarvim.org/)
 
 ## Parsers
 
