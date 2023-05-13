@@ -110,6 +110,7 @@ pub enum RustToken {
     Hash,          // #
     HashBang,      // #!
     Arrow,         // ->
+    MatchArrow,    // =>
     SetOp,         // += -= /= *= ^= |= %= &= <<= >>=
     SingleComment, // //
     CommentOpen,   // /*
@@ -241,6 +242,9 @@ impl lady_deirdre::lexis::Token for RustToken {
                 }
                 (1usize, '.', '.') => {
                     session.advance();
+                    if session.character() == '=' {
+                        session.advance();
+                    }
                     session.submit();
                     return Self::Range;
                 }
@@ -268,6 +272,11 @@ impl lady_deirdre::lexis::Token for RustToken {
                     session.advance();
                     session.submit();
                     return Self::HashBang;
+                }
+                (1usize, '=', '>') => {
+                    session.advance();
+                    session.submit();
+                    return Self::MatchArrow;
                 }
                 (1usize, '-', '>') => {
                     session.advance();
@@ -607,7 +616,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                         if session.character() == 'c' {
                             session.advance();
                             word!(session, Macro, 'r', 'o');
-                        } else if session.character() == 'c' {
+                        } else if session.character() == 't' {
                             session.advance();
                             word!(session, Match, 'c', 'h');
                         }
@@ -852,6 +861,7 @@ impl Display for RustToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
             Self::As => "as",
+            Self::MatchArrow => "=>",
             Self::Async => "async",
             Self::Await => "await",
             Self::Break => "break",

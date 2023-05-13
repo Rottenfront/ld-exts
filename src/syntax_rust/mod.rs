@@ -30,6 +30,8 @@ use std::fs;
 pub fn main() {
     let code = TokenBuffer::<lexis::RustToken>::from(
         fs::read_to_string("txt.rs").expect("Should have been able to read the file"),
+        // fs::read_to_string("src/syntax_rust/lexis.rs")
+        //     .expect("Should have been able to read the file"),
     );
 
     let tree = syntax::RustNode::parse(code.cursor(..));
@@ -41,7 +43,7 @@ pub fn main() {
             .collect::<Vec<_>>()
             .join("\n")
     );
-    
+
     println!(
         "{}",
         code.chunks(..)

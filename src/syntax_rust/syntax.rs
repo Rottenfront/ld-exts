@@ -1,20 +1,20 @@
 /*
- * Copyright (c) 2023 Bankov Andrey "Rottenfront"                                
- *                                                                               
- * Permission is hereby granted, free of charge, to any person obtaining a copy  
- * of this software and associated documentation files (the "Software"), to deal 
- * in the Software without restriction, including without limitation the rights  
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell     
- * copies of the Software, and to permit persons to whom the Software is         
- * furnished to do so, subject to the following conditions:                      
- *                                                                               
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR    
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,      
- * FITNESS FOR A PARTICULAR PURPOSE AN D NONINFRINGEMENT. IN NO EVENT SHALL THE  
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER        
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
- * SOFTWARE.                                                                     
+ * Copyright (c) 2023 Bankov Andrey "Rottenfront"
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AN D NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
 */
 
 use lady_deirdre::{
@@ -27,40 +27,179 @@ use std::vec::Vec;
 #[token(super::lexis::RustToken)]
 #[error(lady_deirdre::syntax::SyntaxError)]
 #[skip($Whitespace | $NewLine)]
-/*
-#[define(ANY = ($As | $Async | $Await | $Break | $Const | $Continue
-| $Crate | $Do | $Dyn | $Else | $Enum | $Extern | $False
-| $Fn | $For | $If | $Impl | $In | $Let | $Loop | $Macro
-| $Match | $Mod | $Move | $Mut | $Pub | $Ref | $Return
-| $LSelf | $USelf | $Static | $Struct | $Super | $Trait | $True
-| $Try | $Type | $Union | $Unsafe | $Use | $Where | $While
-| $Yield | $MacroRules | $NumType | $BasicType | $BinNumber | $OctNumber | $DecNumber | $HexNumber
-| $String | $Identifier | $ParenthesisOpen | $ParenthesisClose | $AngleBracketOpen | $AngleBracketClose | $BraceOpen
-| $BraceClose | $BracketOpen | $BracketClose | $Underscore | $Comma | $Point | $Range | $Apostrophe | $AsciiChar
-| $DoubleColon | $Colon | $Dollar | $Semicolon | $Operator | $Add | $Assign | $Amp | $Star | $Slash | $Tilda | $At
-| $Backslash | $Escape | $Bang | $QuestMark | $Hash | $HashBang | $Arrow | $AssignWithOperation | $Whitespace
-| $SingleComment | $MultilineCommentOpen | $Mismatch | $Bang | $QuestMark))]
-*/
-#[define(ANY = ($Ident | $Comma | $Point | $Range | $Apostrophe))]
-/*
-#[define(ATTR_ITEM = ($As | $Async | $Await | $Break | $Const | $Continue
-| $Crate | $Do | $Dyn | $Else | $Enum | $Extern | $False
-| $Fn | $For | $If | $Impl | $In | $Let | $Loop | $Macro
-| $Match | $Mod | $Move | $Mut | $Pub | $Ref | $Return
-| $LSelf | $USelf | $Static | $Struct | $Super | $Trait | $True
-| $Try | $Type | $Union | $Unsafe | $Use | $Where | $While
-| $Yield | $MacroRules | $NumType | $BasicType | $BinNumber | $OctNumber | $DecNumber | $HexNumber
-| $String | $Identifier | $Underscore | $Comma | $Point | $Range | $Apostrophe | $AsciiChar | $DoubleColon | $Colon
-| $Dollar | $Semicolon | $Operator | $Add | $Assign | $Amp | $Star | $Slash | $Tilda | $At | $Backslash | $Escape
-| $Bang | $QuestMark | $Hash | $HashBang | $Arrow | $AssignWithOperation | $Mismatch))]
-*/
-#[define(ATTR_ITEM = ($Ident))]
+
+#[define(ANY = (
+    $As
+    | $Async
+    | $Await
+    | $Break
+    | $Const
+    | $Continue
+    | $Crate
+    | $Do
+    | $Dyn
+    | $Else
+    | $Enum
+    | $Extern
+    | $False
+    | $Fn
+    | $For
+    | $If
+    | $Impl
+    | $In
+    | $Let
+    | $Loop
+    | $Macro
+    | $Match
+    | $Mod
+    | $Move
+    | $Mut
+    | $Pub
+    | $Ref
+    | $Return
+    | $LSelf
+    | $USelf
+    | $Static
+    | $Struct
+    | $Super
+    | $Trait
+    | $True
+    | $Try
+    | $Type
+    | $Union
+    | $Unsafe
+    | $Use
+    | $Where
+    | $While
+    | $Yield
+    | $BasicType
+    | $Number
+    | $Open
+    | $Close
+    | $Less
+    | $Greater
+    | $BraceOpen
+    | $BraceClose
+    | $BracketOpen
+    | $BracketClose
+    | $Comma
+    | $Point
+    | $Range
+    | $Apostrophe
+    | $AsciiChar
+    | $Colon
+    | $DoubleColon
+    | $Dollar
+    | $Semicolon
+    | $BinOp
+    | $Add
+    | $Sub
+    | $Set
+    | $Refer
+    | $Tilda
+    | $At
+    | $Backslash
+    | $Bang
+    | $Quest
+    | $Hash
+    | $HashBang
+    | $Arrow
+    | $SetOp
+    | $Escape
+    | $Ident
+    | $String
+))]
+
+// #[define(ANY = ($Ident | $Comma | $Point | $Range | $Apostrophe))]
+
+#[define(ATTR_ITEM = (
+    $As
+    | $Async
+    | $Await
+    | $Break
+    | $Const
+    | $Continue
+    | $Crate
+    | $Do
+    | $Dyn
+    | $Else
+    | $Enum
+    | $Extern
+    | $False
+    | $Fn
+    | $For
+    | $If
+    | $Impl
+    | $In
+    | $Let
+    | $Loop
+    | $Macro
+    | $Match
+    | $Mod
+    | $Move
+    | $Mut
+    | $Pub
+    | $Ref
+    | $Return
+    | $LSelf
+    | $USelf
+    | $Static
+    | $Struct
+    | $Super
+    | $Trait
+    | $True
+    | $Try
+    | $Type
+    | $Union
+    | $Unsafe
+    | $Use
+    | $Where
+    | $While
+    | $Yield
+    | $BasicType
+    | $Number
+    | $Less
+    | $Greater
+    | $Comma
+    | $Point
+    | $Range
+    | $Apostrophe
+    | $AsciiChar
+    | $Colon
+    | $DoubleColon
+    | $Dollar
+    | $Semicolon
+    | $BinOp
+    | $Add
+    | $Sub
+    | $Set
+    | $Refer
+    | $Tilda
+    | $At
+    | $Backslash
+    | $Bang
+    | $Quest
+    | $Hash
+    | $HashBang
+    | $Arrow
+    | $SetOp
+    | $Escape
+    | $Ident
+    | $String
+))]
+
+// #[define(ATTR_ITEM = ($Ident | $LSelf | $USelf | $Super | $DoubleColon))]
 #[define(PATH_ITEM = ($Ident | $LSelf | $USelf | $Super))]
 pub enum RustNode {
     // Root
     #[root]
     #[rule((items: RootItem)*)]
     Root { items: Vec<NodeRef> },
+
+    #[rule($Unsafe)]
+    Unsafe,
+    #[rule($Where & (items: TypeForWhere)+{$Comma})]
+    Where { items: Vec<NodeRef> },
 
     #[rule((attrs: AttrOuter)* & (mods: PubConstruct)? & (mods: (Extern | Unsafe))?
     & (value: (StructDefConstruct | AttrInner | EnumDefConstruct | UseConstruct | FnDefConstruct | TraitDef
@@ -71,35 +210,22 @@ pub enum RustNode {
         value: NodeRef,
     },
 
-    // A
-    #[rule($HashBang & $BracketOpen & (items: (($Open & ATTR_ITEM* & $Close)
-    | ($BracketOpen & ATTR_ITEM* & $BracketClose) | ($Less & ATTR_ITEM* & $Greater)
-    | ($BraceOpen & ATTR_ITEM* & $BraceClose) | ATTR_ITEM))* & $BracketClose)]
-    AttrInner { items: Vec<TokenRef> },
+    #[rule($HashBang & $BracketOpen & (name: Path) & (arg: MacroUse)? & $BracketClose)]
+    AttrInner { name: NodeRef, arg: NodeRef },
 
-    #[rule($Hash & $BracketOpen & (items: (ATTR_ITEM | ($Open & ATTR_ITEM* & $Close)
-    | ($BracketOpen & ATTR_ITEM* & $BracketClose) | ($BraceOpen & ATTR_ITEM* & $BraceClose)))*
-    & $BracketClose)]
-    AttrOuter { items: Vec<TokenRef> },
-
-    // B
-    #[rule(value: $BasicType)]
-    BasicType { value: TokenRef },
-
-    // C
-    #[rule(value: (($AsciiChar | $Apostrophe) & ANY? & $Apostrophe))]
-    Char {
-        value: Vec<TokenRef>,
-    },
-    #[rule($BraceOpen & $BraceClose)]
-    CodeBlock,
+    #[rule($Hash & $BracketOpen & (name: Path) & (arg: MacroUse)? & $BracketClose)]
+    AttrOuter { name: NodeRef, arg: NodeRef },
 
     #[comment]
     #[rule($SingleComment & (value: (ANY | $CommentClose | ($Backslash & ($NewLine)? | $Whitespace))*))]
     CommentSingle { value: Vec<TokenRef> },
 
     #[comment]
-    #[rule($CommentOpen & (value: (ANY | $NewLine | $Whitespace)*) & $CommentClose)]
+    #[rule($CommentOpen & (value: ((ANY | $NewLine | $Whitespace)+
+    | ($CommentOpen & ((ANY | $NewLine | $Whitespace)+
+    | ($CommentOpen & ((ANY | $NewLine | $Whitespace)+
+    | ($CommentOpen & (ANY | $NewLine | $Whitespace)*
+    & $CommentClose))* & $CommentClose))* & $CommentClose)))* & $CommentClose)]
     CommentMultiline { value: Vec<TokenRef> },
 
     // D
@@ -139,21 +265,7 @@ pub enum RustNode {
     // False,
     #[rule((name: $Ident) & $Colon & (_type: Type))]
     FnParameter { name: TokenRef, _type: NodeRef },
-    /*
 
-    #[rule((parent: Path) & $ParenthesisOpen & (name: $Identifier) & $ParenthesisClose & $Colon & (_type: Type))]
-    FnParameterWithParent {
-        parent: NodeRef,
-        name: TokenRef,
-        _type: NodeRef,
-    },
-
-    #[rule((is_absolute: $DoubleColon)? & ((path: PATH_ITEM) & $DoubleColon)* & (path: PATH_ITEM) & ($DoubleColon & (path: $Star))?)]
-    Path {
-        is_absolute: TokenRef,
-        path: Vec<TokenRef>,
-    },
-    */
     #[rule((refer: Reference)? & $LSelf)]
     SelfUse { refer: NodeRef },
 
@@ -202,11 +314,6 @@ pub enum RustNode {
         code: NodeRef,
     },
 
-    // J
-
-    // K
-
-    // L
     #[rule($Apostrophe & (value: ($Ident | $Static)))]
     Lifetime { value: TokenRef },
 
@@ -217,17 +324,11 @@ pub enum RustNode {
     #[rule($Mod & (name: $Ident) & (code: (Semicolon | ModuleBlock)))]
     ModuleDef { name: TokenRef, code: NodeRef },
 
-    // N
-    #[rule(value: $Number)]
-    Number { value: TokenRef },
-
-    // O
-
-    // P
-    #[rule((prefix: (($Crate | $Super+{$DoubleColon} | $LSelf | $USelf)? & $DoubleColon))?
+    #[rule(((prefix: $DoubleColon) | ((prefix: ($Crate | $LSelf | $USelf)) & $DoubleColon)
+        | ((path: $Super) & $DoubleColon)+)?
         & (path: $Ident)+{$DoubleColon})]
     Path {
-        prefix: Vec<TokenRef>,
+        prefix: TokenRef,
         path: Vec<TokenRef>,
     },
 
@@ -243,16 +344,14 @@ pub enum RustNode {
     // Q
 
     // R
-    #[rule(((refer: $Refer)+ & (lf: Lifetime)? & (mutability: $Mut)?) | (mutability: $Mut))]
+    #[rule(((refer: $Refer)+ & (lf: Lifetime)? & (ref_: $Ref)? & (mutability: $Mut)?)
+        | ((mutability: $Mut) & (ref_: $Ref)?) | (ref_: $Ref))]
     Reference {
         refer: Vec<TokenRef>,
         lf: NodeRef,
         mutability: TokenRef,
+        ref_: TokenRef,
     },
-
-    // S
-    #[rule(value: $String)]
-    String { value: TokenRef },
 
     #[rule($Semicolon)]
     Semicolon,
@@ -283,12 +382,26 @@ pub enum RustNode {
         value: NodeRef,
     },
 
-    // T
-    #[rule((refer: Reference)? & (value: TypeNoRefer))]
-    Type { refer: NodeRef, value: NodeRef },
+    #[rule((refer: Reference)? & ((value: TypeNoRefer) | ($Open & (tuple: Type)* & $Close)
+    | ($BracketOpen & (arr_type: Type) & ($Semicolon & (len: Value))? & $BracketClose)))]
+    Type {
+        refer: NodeRef,
+        value: NodeRef,
+        tuple: Vec<NodeRef>,
+        arr_type: NodeRef,
+        len: NodeRef,
+    },
 
-    #[rule((modifier: ($Impl | $Dyn | $Quest))? & (value: (BasicType | Path)) & (generic: GenericUse)?)]
-    TypeNoRefer { modifier: TokenRef, value: NodeRef, generic: NodeRef },
+    #[rule((modifier: ($Impl | $Dyn | $Quest))? & (
+            ((value: Path) & (generic: GenericUse)? & ($Open & (tuple: Type*) & $Close)?)
+            | (value: BasicType)
+    ))]
+    TypeNoRefer {
+        modifier: TokenRef,
+        value: NodeRef,
+        tuple: Vec<NodeRef>,
+        generic: NodeRef,
+    },
 
     #[rule((attrs: AttrOuter)* & (name: $Ident) & ($Colon
         & (value: (TypeNoRefer | Lifetime))+{$Add})?)]
@@ -305,6 +418,9 @@ pub enum RustNode {
         name: NodeRef,
         value: Vec<NodeRef>,
     },
+
+    #[rule(value: $BasicType)]
+    BasicType { value: TokenRef },
 
     #[rule($Colon & ((traits: TypeNoRefer) & $Add)* & (traits: TypeNoRefer))]
     TraitInherit { traits: Vec<NodeRef> },
@@ -339,10 +455,6 @@ pub enum RustNode {
         inner_attrs: Vec<NodeRef>,
     },
 
-    // U
-    #[rule($Unsafe)]
-    Unsafe,
-
     #[rule($BraceOpen & (inner: UseStatementConstruct)*{$Comma} & $BraceClose)]
     UseBlock { inner: Vec<NodeRef> },
 
@@ -372,42 +484,63 @@ pub enum RustNode {
         value: NodeRef,
     },
 
-    // V
+    #[rule(value: $Number)]
+    Number { value: TokenRef },
+    #[rule(value: $String)]
+    String { value: TokenRef },
+    // #[rule(value: (($AsciiChar | $Apostrophe) & ANY? & $Apostrophe))]
+    // Char { value: Vec<TokenRef> },
     #[rule((value: SingleVal)+{op: ($BinOp | $Refer | $Less | $Greater)})]
     Value {
         value: Vec<NodeRef>,
         op: Vec<TokenRef>,
     },
-    
-    #[rule(
-        (prefix: ($Sub | $Add | $Refer | $Bang))?
-        & (value: (ValueParenthesis | ValueIdent | String | Char | Number))
-    )]
+
+    #[rule((prefix: (Reference | UnOp)*)
+    & (value: (ValueParenthesis | ValueIdent | String | /* Char | */ Number | ValueBrackets
+        | CodeBlock | Match | If | For | While))
+    & ((range: $Range) & (next: Value))?
+    & (methods: (Method | Index | Number))* & ($As & (as_type: Type))*)]
     SingleVal {
-        prefix: TokenRef,
+        prefix: Vec<NodeRef>,
         value: NodeRef,
+        range: TokenRef,
+        next: NodeRef,
+        methods: Vec<NodeRef>,
+        as_type: Vec<NodeRef>,
     },
 
-    #[rule($Open & (value: Value) & $Close)]
-    ValueParenthesis { value: NodeRef },
+    #[rule(val: ($Sub | $Add | $Bang)+)]
+    UnOp { val: Vec<TokenRef> },
+
+    #[rule($BracketOpen & (((range: $Range) & (val: Value)?) | (val: Value)) & $BracketClose)]
+    Index { range: TokenRef, val: NodeRef },
+
+    #[rule($Open & (values: Value)*{$Comma} & $Close)]
+    ValueParenthesis { values: Vec<NodeRef> },
+
+    #[rule($BracketOpen & (value: Value) & (($Comma & (values: Value))*
+        | ($Semicolon & (len: Value))) & $BracketClose)]
+    ValueBrackets {
+        value: NodeRef,
+        len: NodeRef,
+        values: Vec<NodeRef>,
+    },
+
+    #[rule(val: $Ident)]
+    Ident { val: TokenRef },
 
     #[rule(
-        (
-            (((prefix: $DoubleColon) | ((prefix: ($Crate | $USelf)) & $DoubleColon))
-            & (path: $Ident)+{$DoubleColon}
-            & ($DoubleColon & (generic: GenericUse) & $DoubleColon)?)
-            | ((prefix: ($LSelf | $Ident)) & (
-                (((path_t: $DoubleColon) & (path: $Ident))+
-                & ($DoubleColon & (generic: GenericUse) & $DoubleColon & ((add_path: $Ident)+{$DoubleColon})?)?)
-                | ((path_t: $Point) & (path: $Ident))+
-            )?)
-        )
-    )]
+    (((prefix: $DoubleColon) | ((prefix: ($Crate | $USelf)) & $DoubleColon)
+    | ((prefix: $Super) & $DoubleColon)+)
+        & (path: (Ident | GenericUse))+{$DoubleColon})
+    | ((prefix: ($LSelf | $Ident)) & (
+        ((path_t: $DoubleColon) & (path: (Ident | GenericUse)))+
+        | ((path_t: $Point) & (path: Ident))+
+    )?))]
     ValPath {
-        prefix: TokenRef,
-        path: Vec<TokenRef>,
-        generic: NodeRef,
-        // add_path: Vec<TokenRef>,
+        prefix: Vec<TokenRef>,
+        path: Vec<NodeRef>,
         path_t: Vec<TokenRef>,
     },
 
@@ -419,246 +552,143 @@ pub enum RustNode {
         add_path: Vec<TokenRef>,
     },
 
-    #[rule((path: (ValPath | AsTrait)) & (val: Call)?)]
+    #[rule(val: ATTR_ITEM+)]
+    AnyTokens { val: Vec<TokenRef> },
+
+    #[rule(((brace_type: $Open) & (tokens: (MacroUse | AnyTokens))+ & $Close)
+        | ((brace_type: $BraceOpen) & (tokens: (MacroUse | AnyTokens))+ & $BraceClose)
+        | ((brace_type: $BracketOpen) & (tokens: (MacroUse | AnyTokens))+ & $BracketClose))]
+    MacroUse {
+        brace_type: TokenRef,
+        tokens: Vec<NodeRef>,
+    },
+
+    #[rule((path: (ValPath | AsTrait)) & ((val: Call) | ($Bang & (macro_: MacroUse))
+        | (val: Constructor))?)]
     ValueIdent {
         path: NodeRef,
         val: NodeRef,
+        macro_: NodeRef,
+    },
+
+    #[rule((name: $Ident) & ($Colon & (val: Value))?)]
+    ConstructItem { name: TokenRef, val: NodeRef },
+
+    #[rule($BraceOpen & (items: ConstructItem)*{$Comma} & ($Range & (default: Value))? & $BraceClose)]
+    Constructor {
+        items: Vec<NodeRef>,
+        default: NodeRef,
     },
 
     #[rule($Open & (values: Value)*{$Comma} & $Close)]
-    Call {
+    Call { values: Vec<NodeRef> },
+
+    #[rule($Point & (name: $Ident) & (call: Call)?)]
+    Method { name: TokenRef, call: NodeRef },
+
+    #[rule($BraceOpen & (actions: (Action | Let | Continue | Break | Return | Lable))* & $BraceClose)]
+    CodeBlock { actions: Vec<NodeRef> },
+
+    #[rule((lhs: Value) & (((op: ($SetOp | $Set)) & (rhs: Value) & $Semicolon) | (end: $Semicolon))?)]
+    Action {
+        lhs: NodeRef,
+        op: TokenRef,
+        rhs: NodeRef,
+        end: TokenRef,
+    },
+
+    #[rule((value: SingleValNoCostruct)+{op: ($BinOp | $Refer | $Less | $Greater)})]
+    ValNoConstruct {
+        value: Vec<NodeRef>,
+        op: Vec<TokenRef>,
+    },
+
+    #[rule((path: (ValPath | AsTrait)) & ((val: Call) | ($Bang & (macro_: MacroUse)))?)]
+    ValNoConstructIdent {
+        path: NodeRef,
+        val: NodeRef,
+        macro_: NodeRef,
+    },
+
+    #[rule((prefix: (Reference | UnOp)*)
+    & (value: (ValueParenthesis | ValNoConstructIdent | String | /* Char | */ Number | ValueBrackets
+        | CodeBlock | Match | If | For | While))
+    & ((range: $Range) & (next: ValNoConstruct))?
+    & (methods: (Method | Index | Number))* & ($As & (as_type: Type))*)]
+    SingleValNoCostruct {
+        prefix: Vec<NodeRef>,
+        value: NodeRef,
+        range: TokenRef,
+        next: NodeRef,
+        methods: Vec<NodeRef>,
+        as_type: Vec<NodeRef>,
+    },
+
+    #[rule((value: Ident) | ((refer: Reference) & (value: TupleFor))
+        | ($Open & (values: TupleFor)*{$Comma} & $Close))]
+    TupleFor {
+        refer: NodeRef,
+        value: NodeRef,
         values: Vec<NodeRef>,
     },
 
-    // W
-    #[rule($Where & (items: TypeForWhere)+{$Comma})]
-    Where { items: Vec<NodeRef> },
-    // X
+    #[rule((lable: Lifetime) & $Colon & (val: (While | For | CodeBlock)))]
+    Lable { lable: NodeRef, val: NodeRef },
 
-    // Y
+    #[rule($Match & (val: ValNoConstruct) & $BraceOpen & (items: MatchItem*) & $BraceClose)]
+    Match { val: NodeRef, items: Vec<NodeRef> },
 
-    // Z
+    #[rule((val: Value) & $MatchArrow & (ret: Value) & $Comma?)]
+    MatchItem { val: NodeRef, ret: NodeRef },
+
+    #[rule($For & (val: TupleFor) & $In & (arr: ValNoConstruct) & (block: CodeBlock))]
+    For {
+        val: NodeRef,
+        arr: NodeRef,
+        block: NodeRef,
+    },
+
+    #[rule($While & (cond: (ValNoConstruct | Let) & (block: CodeBlock)))]
+    While { cond: NodeRef, block: NodeRef },
+
+    #[rule($If & (cond: (ValNoConstruct | Let)) & (block: CodeBlock) & ($Else & (next: (CodeBlock | If)))?)]
+    If {
+        cond: NodeRef,
+        block: NodeRef,
+        next: NodeRef,
+    },
+
+    #[rule($Continue & (label: Lifetime)? & (val: Value)? & $Semicolon?)]
+    Continue { label: NodeRef, val: NodeRef },
+
+    #[rule($Break & (label: Lifetime)? & (val: Value)? & $Semicolon?)]
+    Break { label: NodeRef, val: NodeRef },
+
+    #[rule($Return & (val: Value)? & $Semicolon?)]
+    Return { val: NodeRef },
+
+    #[rule(((prefix: $DoubleColon) | ((prefix: ($Crate | $LSelf | $USelf)) & $DoubleColon)
+        | ((path: $Super) & $DoubleColon)+)
+        & (path: $Ident)+{$DoubleColon})]
+    PathNoIdent {
+        prefix: TokenRef,
+        path: Vec<TokenRef>,
+    },
+
+    #[rule(((refer: Reference) & (value: TupleFor))
+        | ($Open & (values: TupleFor)*{$Comma} & $Close))]
+    TupleLet {
+        refer: NodeRef,
+        value: NodeRef,
+        values: Vec<NodeRef>,
+    },
+
+    #[rule($Let & (((path: PathNoIdent) & (names: TupleLet)?) | (names: TupleLet))
+    & ($Colon & (type_: Type)?) & ($Set & (val: Value))? & $Semicolon?)]
+    Let {
+        path: NodeRef,
+        names: NodeRef,
+        type_: NodeRef,
+        val: NodeRef,
+    },
 }
-
-
-/*
-struct S {}                  done
-    struct S { x: T }       done
-    struct S(T);            done
-    struct S;               done
-enum E {}                    done
-    enum E { A, B(), C {} } done
-    enum E { A = 1 }        done
-
-union U {}                   todo
-
-
-static X: T = T();           todo
-const X: T = T();            todo
-let x: T (= ...);            todo
-let mut x: T (= ...);        todo
-
-S { x: y }
-S { x }
-S { ..s }
-S { 0: x }
-S(x)
-E::C { x: y }
-()	Empty tuple
-(x)	Parenthesized expression.
-(x,)
-(S,)
-[S]
-[S; n]
-[x; n]
-[x, y]
-x[0]
-     x[..]
-a..b
-..b
-..=b
-a..=b
-a..
-..
-s.x	Named field access
-s.0	Numbered field access
-
-trait T {}
-trait T : R {}                done
-impl S {}                     done
-impl T for S {}
-impl !T for S {}
-fn f() {}
-    fn f() -> S {}
-    fn f(&self) {}
-struct S(T);
-const fn f() {}
-async fn f() {}
-    async fn f() -> S {}
-    async { x }
-fn() -> S
-Fn() -> S
-|| {}
-    |x| {}
-    |x| x + x
-    move |x| x + y
-    return || true
-unsafe
-    unsafe fn f() {}
-    unsafe trait T {}
-    unsafe { f(); }
-    unsafe impl T for S {}
-
-while x {}
-loop {}
-for x in collection {}
-    collection.into_iter()
-    iterator.next()
-if x {} else {}
-'label: {}
-'label: loop {}
-break
-    break 'label x
-    break 'label
-    break x
-continue
-continue 'label
-x?
-x.await
-    x.into_future()
-    future.poll()
-return x
-    { return }
-    || { return }
-    async { return }
-f()
-x.f()
-    X::f(x)
-    X::f(&x)
-    X::f(&mut x)
-    S::f(&x)
-    T::f(&x)
-X::f()
-    <X as T>::f()
-
-a::b
-    ::b
-    crate::b
-    self::b
-    super::b
-use a::b;
-use a::{b, c};
-use a::b as x;
-use a::b as _;
-use a::*;
-pub use a::b;
-pub T
-    pub(crate) T
-    pub(super) T
-    pub(self) T
-    pub(in a::b) T
-extern crate a;
-    self: Box<Self>
-<S as T>
-a::b as c
-x as u32
-
-m!()
-$x:ty
-$x
-$(x),*
-    $(x),?
-    $(x),+
-    $(x)<<+
-
-match m {}
-let S(x) = get();
-    let S { x } = s;
-    let (_, b, _) = abc;
-    let (a, ..) = abc;
-    let (.., a, b) = (1, 2);
-    let s @ S { x } = get();
-    let w @ t @ f = get();
-    let (|x| x) = get();
-let Some(x) = get();
-let Some(x) = get() else {};
-if let Some(x) = get() {}
-while let Some(x) = get() {}
-fn f(S { x }: S)
-
-E::A => {}
-E::B ( .. ) => {}
-E::C { .. } => {}
-S { x: 0, y: 1 } => {}
-S { x: a, y: b } => {}
-    S { x, y } => {}
-S { .. } => {}
-D => {}
-D => {}
-_ => {}
-0 | 1 => {}
-    E::A | E::Z => {}
-    E::C {x} | E::D {x} => {}
-    Some(A | B) => {}
-    |x| x => {}
-(a, 0) => {}
-[a, 0] => {}
-    [1, ..] => {}
-    [1, .., 5] => {}
-    [1, x @ .., 5] => {}
-    [a, x @ .., b] => {}
-1 .. 3 => {}
-    1 ..= 3 => {}
-    1 .. => {}
-x @ 1..=5 => {}
-    Err(x @ Error {..}) => {}
-S { x } if x > 10 => {}
-
-    where T: R + 'a
-    where T: ?Sized
-    where T: 'a
-    where T: 'static
-    where 'b: 'a
-    where u8: R<T>
-S<const N: usize>
-    S<10>
-    S<{5+5}>
-S<T = R>
-    S<const N: u8 = 0>
-    S<T = u8>
-S<'_>
-S<_>
-S::<T>
-trait T { type X<'a>; }
-impl<T> S<T> {}
-impl S<T> {}
-fn f(x: &impl T)
-fn f(x: &dyn T)
-fn f<X: T>(x: X)
-fn f() where Self: R;
-    fn f() where Self: Sized;
-    fn f() where Self: R {}
-
-for<'a>
-    trait T: for<'a> R<'a> {}
-fn(&'a u8)
-for<'a> fn(&'a u8)
-    fn(&'_ u8)
-    fn(&u8)
-dyn for<'a> Fn(&'a u8)
-    dyn Fn(&'_ u8)
-    dyn Fn(&u8)
-
-
-impl<'a> T for fn(&'a u8) {}
-impl T for for<'a> fn(&'a u8) {}
-    impl T for fn(&u8) {}
-r#"..."#
-    fn f() -> ! {}
-    fn f() -> Result<(), !> {}
-    fn f(x: !) {}
-_
-    let _ = x;
-    _ = x;
-x;
-*/
