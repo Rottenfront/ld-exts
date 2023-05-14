@@ -27,11 +27,12 @@ use lady_deirdre::syntax::SyntaxTree;
 
 use std::fs;
 
+
 pub fn main() {
     let code = TokenBuffer::<lexis::RustToken>::from(
-        // fs::read_to_string("txt.rs").expect("Should have been able to read the file"),
-        fs::read_to_string("src/syntax_rust/mod.rs")
-            .expect("Should have been able to read the file"),
+        fs::read_to_string("txt.rs").expect("Should have been able to read the file"),
+        // fs::read_to_string("src/syntax_rust/mod.rs")
+        //     .expect("Should have been able to read the file"),
     );
 
     let tree = syntax::RustNode::parse(code.cursor(..));

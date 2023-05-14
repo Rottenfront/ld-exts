@@ -109,9 +109,7 @@ pub enum RustToken {
     Arrow,         // ->
     MatchArrow,    // =>
     SetOp,         // += -= /= *= ^= |= %= &= <<= >>=
-    SingleComment, // //
-    CommentOpen,   // /*
-    CommentClose,  // */
+    Comment,       // /* ... */
 
     Escape, // '\\' & (['\'', '"', '\\', '/', 'b', 'f', 'n', 'r', 't', '\n', '0'] | ('x' & HEX & HEX) | ("u{" & HEX & HEX & HEX & HEX & '}'))
 
@@ -181,8 +179,9 @@ macro_rules! word {
 impl lady_deirdre::lexis::Token for RustToken {
     fn new(session: &mut impl LexisSession) -> Self {
         let mut state = 1usize;
-        let mut hash_count = 0usize;
-        let mut tmp_hash_count = 0usize;
+        let mut string_hash_count = 0usize;
+        let mut tmp_string_hash_count = 0usize;
+        let mut comment_nesting = 0usize;
         loop {
             let current = session.character();
             session.advance();
@@ -227,8 +226,48 @@ impl lady_deirdre::lexis::Token for RustToken {
                         session.submit();
                         return Self::Number;
                     }
+                    state = 2;
                 },
-
+                (2, _, ch) => {
+                    if ch == ' '
+                        || ch == '\t'
+                        || ch == '\r'
+                        || ch == '\x0b'
+                        || ch == '\n'
+                        || ch == '('
+                        || ch == ')'
+                        || ch == '\x0c'
+                        || ch == '<'
+                        || ch == '>'
+                        || ch == '{'
+                        || ch == '}'
+                        || ch == '['
+                        || ch == ']'
+                        || ch == ','
+                        || ch == '|'
+                        || ch == '\''
+                        || ch == ':'
+                        || ch == '$'
+                        || ch == ';'
+                        || ch == '-'
+                        || ch == '%'
+                        || ch == '^'
+                        || ch == '='
+                        || ch == '+'
+                        || ch == '&'
+                        || ch == '*'
+                        || ch == '/'
+                        || ch == '~'
+                        || ch == '@'
+                        || ch == '\\'
+                        || ch == '!'
+                        || ch == '?'
+                        || ch == '#'
+                    {
+                        session.submit();
+                        return Self::Number;
+                    }
+                }
                 (1 | 3, '\t' | '\u{b}'..='\r' | ' ', '\t' | '\u{b}'..='\r' | ' ') => state = 3,
                 (1 | 3, '\t' | '\u{b}'..='\r' | ' ', _) => {
                     session.submit();
@@ -309,18 +348,37 @@ impl lady_deirdre::lexis::Token for RustToken {
                 }
                 (1, '/', '/') => {
                     session.advance();
-                    session.submit();
-                    return Self::SingleComment;
+                    if session.character() == '\n' {
+                        session.advance();
+                        session.submit();
+                        return Self::Comment;
+                    }
+                    state = 12;
                 }
                 (1, '/', '*') => {
+                    state = 13;
                     session.advance();
-                    session.submit();
-                    return Self::CommentOpen;
                 }
-                (1, '*', '/') => {
-                    session.advance();
-                    session.submit();
-                    return Self::CommentClose;
+                (12, ch, _) => {
+                    if ch == '\n' {
+                        session.submit();
+                        return Self::Comment;
+                    }
+                }
+                (13, ch1, ch2) => {
+                    if ch1 == '*' && ch2 == '/' {
+                        if comment_nesting > 0 {
+                            comment_nesting -= 1;
+                            session.advance();
+                        } else {
+                            session.advance();
+                            session.submit();
+                            return Self::Comment;
+                        }
+                    } else if ch1 == '/' && ch2 == '*' {
+                        comment_nesting += 1;
+                        session.advance();
+                    }
                 }
                 (1, '(', _) => {
                     session.submit();
@@ -420,9 +478,19 @@ impl lady_deirdre::lexis::Token for RustToken {
                     return Self::Escape;
                 }
                 (1, '\\', 'u') => {
-                    advance!(session, 7);
-                    session.submit();
-                    return Self::Escape;
+                    session.advance();
+                    if session.character() == '{' {
+                        state = 14;
+                    } else {
+                        session.submit();
+                        return Self::Escape;
+                    }
+                }
+                (14, ch, _) => {
+                    if ch == '}' {
+                        session.submit();
+                        return Self::Escape;
+                    }
                 }
 
                 (1, 'a', _) => {
@@ -445,7 +513,32 @@ impl lady_deirdre::lexis::Token for RustToken {
                     // 'b' 'o' 'o' 'l'
                     if session.character() == 'r' {
                         session.advance();
-                        word!(session, Break, 'e', 'a', 'k');
+                        if session.character() == 'e' {
+                            word!(session, Break, 'a', 'k');
+                        } else if session.character() == '"' {
+                            session.advance();
+                            if session.character() == '"' {
+                                session.advance();
+                                session.submit();
+                                return Self::String;
+                            }
+                            state = 11;
+                            continue;
+                        } else if session.character() == '#' {
+                            while session.character() == '#' {
+                                session.advance();
+                                string_hash_count += 1;
+                            }
+                            if session.character() == '"' {
+                                tmp_string_hash_count = string_hash_count;
+                                state = 11;
+                                continue;
+                            } else {
+                                state = 5;
+                                string_hash_count = 0;
+                                continue;
+                            }
+                        }
                     } else if session.character() == 'o' {
                         session.advance();
                         word!(session, BasicType, 'o', 'l');
@@ -660,20 +753,56 @@ impl lady_deirdre::lexis::Token for RustToken {
                     } else if session.character() == '#' {
                         while session.character() == '#' {
                             session.advance();
-                            hash_count += 1;
+                            string_hash_count += 1;
                         }
                         if session.character() == '"' {
-                            tmp_hash_count = hash_count;
+                            tmp_string_hash_count = string_hash_count;
                             state = 11;
                             continue;
                         } else {
                             state = 5;
-                            hash_count = 0;
+                            string_hash_count = 0;
                             continue;
                         }
                     }
                     word!(session, Ident);
                     state = 5;
+                }
+                (11, ch, _) => {
+                    println!("b");
+                    'b: {
+                        if ch == '"' {
+                            println!("a");
+                            while tmp_string_hash_count > 0 {
+                                if session.character() != '#' {
+                                    println!("bac");
+                                    break 'b;
+                                }
+                                session.advance();
+                                tmp_string_hash_count -= 1;
+                            }
+                            string_hash_count = 0;
+                            session.submit();
+                            return Self::String;
+                        }
+                    }
+                    'a: {
+                        if session.character() == '"' {
+                            println!("a");
+                            while tmp_string_hash_count > 0 {
+                                session.advance();
+                                if session.character() != '#' {
+                                    println!("bac");
+                                    break 'a;
+                                }
+                                tmp_string_hash_count -= 1;
+                            }
+                            string_hash_count = 0;
+                            session.submit();
+                            return Self::String;
+                        }
+                    }
+                    tmp_string_hash_count = string_hash_count;
                 }
                 (1, 'S', 'e') => {
                     // 'S' 'e' 'l' 'f'
@@ -987,42 +1116,6 @@ impl lady_deirdre::lexis::Token for RustToken {
                         return Self::Lable;
                     }
                 }
-                (11, ch, _) => {
-                    println!("b");
-                    'b: {
-                        if ch == '"' {
-                            println!("a");
-                            while tmp_hash_count > 0 {
-                                if session.character() != '#' {
-                                    println!("bac");
-                                    break 'b;
-                                }
-                                session.advance();
-                                tmp_hash_count -= 1;
-                            }
-                            hash_count = 0;
-                            session.submit();
-                            return Self::String;
-                        }
-                    }
-                    'a: {
-                        if session.character() == '"' {
-                            println!("a");
-                            while tmp_hash_count > 0 {
-                                session.advance();
-                                if session.character() != '#' {
-                                    println!("bac");
-                                    break 'a;
-                                }
-                                tmp_hash_count -= 1;
-                            }
-                            hash_count = 0;
-                            session.submit();
-                            return Self::String;
-                        }
-                    }
-                    tmp_hash_count = hash_count;
-                }
                 (1 | 5, _, ch) => {
                     if ch == ' '
                         || ch == '\t'
@@ -1062,12 +1155,21 @@ impl lady_deirdre::lexis::Token for RustToken {
                     {
                         session.submit();
                         return Self::Ident;
+                    } else {
+                        state = 5;
                     }
                 }
                 _ => break,
             }
         }
-        Self::Ident
+        match state {
+            6 | 7 => Self::String,
+            10 => Self::Lable,
+            8 | 9 | 11 => Self::Char,
+            12 | 13 => Self::Comment,
+            14 => Self::Escape,
+            _ => Self::Ident,
+        }
     }
 }
 
@@ -1156,9 +1258,7 @@ impl Display for RustToken {
             Self::SetOp => "+=",
             Self::Whitespace => " ",
             Self::NewLine => "\n",
-            Self::SingleComment => "//",
-            Self::CommentOpen => "/*",
-            Self::CommentClose => "*/",
+            Self::Comment => "/* */",
         }
         .fmt(f)
     }

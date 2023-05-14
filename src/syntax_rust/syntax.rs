@@ -27,7 +27,7 @@ use std::vec::Vec;
 #[token(super::lexis::RustToken)]
 #[error(lady_deirdre::syntax::SyntaxError)]
 #[skip($Whitespace | $NewLine)]
-/*
+
 #[define(ANY = (
     $As
     | $Async
@@ -109,9 +109,9 @@ use std::vec::Vec;
     | $Ident
     | $String
 ))]
-*/
-#[define(ANY = ($Ident | $Comma | $Point | $Range | $Char | $Lable))]
-/*
+
+// #[define(ANY = ($Ident | $Comma | $Point | $Range | $Char | $Lable))]
+
 #[define(ATTR_ITEM = (
     $As
     | $Async
@@ -187,8 +187,8 @@ use std::vec::Vec;
     | $Ident
     | $String
 ))]
-*/
-#[define(ATTR_ITEM = ($Ident | $LSelf | $USelf | $Super | $DoubleColon))]
+
+// #[define(ATTR_ITEM = ($Ident | $LSelf | $USelf | $Super | $DoubleColon))]
 #[define(PATH_ITEM = ($Ident | $LSelf | $USelf | $Super))]
 pub enum RustNode {
     // Root
@@ -210,6 +210,10 @@ pub enum RustNode {
         value: NodeRef,
     },
 
+    MacroRules {
+        name: TokenRef,
+    },
+
     #[rule($HashBang & $BracketOpen & (name: Path) & (arg: MacroUse)? & $BracketClose)]
     AttrInner { name: NodeRef, arg: NodeRef },
 
@@ -217,16 +221,8 @@ pub enum RustNode {
     AttrOuter { name: NodeRef, arg: NodeRef },
 
     #[comment]
-    #[rule($SingleComment & (value: (ANY | $CommentClose | ($Backslash & ($NewLine)? | $Whitespace))*))]
-    CommentSingle { value: Vec<TokenRef> },
-
-    #[comment]
-    #[rule($CommentOpen & (value: ((ANY | $NewLine | $Whitespace)+
-    | ($CommentOpen & ((ANY | $NewLine | $Whitespace)+
-    | ($CommentOpen & ((ANY | $NewLine | $Whitespace)+
-    | ($CommentOpen & (ANY | $NewLine | $Whitespace)*
-    & $CommentClose))* & $CommentClose))* & $CommentClose)))* & $CommentClose)]
-    CommentMultiline { value: Vec<TokenRef> },
+    #[rule(value: $Comment+)]
+    Comment { value: Vec<TokenRef> },
 
     // D
 
@@ -294,12 +290,9 @@ pub enum RustNode {
     #[rule($Less & (items: GenericUseType)+{$Comma} & $Greater)]
     GenericUse { items: Vec<NodeRef> },
 
-    #[rule(((is_absolute: $DoubleColon)? & (path: ($LSelf | $USelf | $Crate | $Super)) & $DoubleColon
-    & ((path: PATH_ITEM) & $DoubleColon)* & (path: PATH_ITEM)) | (((path: $Ident) & $DoubleColon)*
-    & (path: $Ident) & $Set & (_type: Type)))]
+    #[rule((path: Path) & ($Set & (_type: Type))?)]
     GenericUseType {
-        is_absolute: TokenRef,
-        path: Vec<TokenRef>,
+        path: NodeRef,
         _type: NodeRef,
     },
 
@@ -455,17 +448,18 @@ pub enum RustNode {
         inner_attrs: Vec<NodeRef>,
     },
 
-    #[rule($BraceOpen & (inner: UseStatementConstruct)*{$Comma} & $BraceClose)]
+    #[rule($BraceOpen & (inner: UseStatementConstruct)*{$Comma} & $Comma? & $BraceClose)]
     UseBlock { inner: Vec<NodeRef> },
-
-    #[rule($DoubleColon & block: UseBlock?)]
-    UseStatementBlock { block: NodeRef },
 
     #[rule($As & (name: $Ident))]
     UseStatementAs { name: TokenRef },
 
-    #[rule((path: Path) & (additional: UseStatementBlock | UseStatementAs)?)]
-    UseStatementConstruct { path: NodeRef, additional: NodeRef },
+    #[rule($Refer)]
+    Star,
+
+    #[rule(((prefix: $DoubleColon) | ((prefix: ($Crate | $LSelf | $USelf)) & $DoubleColon)
+    | ((prefix: $Super) & $DoubleColon)+)? & (path: (Ident | UseBlock | Star))+{$DoubleColon} & (additional: UseStatementAs)?)]
+    UseStatementConstruct { prefix: Vec<TokenRef>, path: Vec<NodeRef>, additional: NodeRef },
 
     #[rule($Use & (st: UseStatementConstruct) & $Semicolon)]
     UseConstruct { st: NodeRef },
@@ -496,11 +490,11 @@ pub enum RustNode {
         op: Vec<TokenRef>,
     },
 
-    #[rule((prefix: (Reference | UnOp)*)
-    & (value: (ValueParenthesis | ValueIdent | String | Char | Number | ValueBrackets
+    #[rule(((prefix: (Reference | UnOp)*)
+    & ((value: (ValueParenthesis | ValueIdent | String | Char | Number | ValueBrackets
         | CodeBlock | Match | If | For | While))
     & ((range: $Range) & (next: Value))?
-    & (methods: (Method | Index | Number))* & ($As & (as_type: Type))*)]
+    & (methods: (Method | Index))*) | ((range: $Range) & (next: Value)?)) & ($As & (as_type: Type))*)]
     SingleVal {
         prefix: Vec<NodeRef>,
         value: NodeRef,
@@ -513,8 +507,8 @@ pub enum RustNode {
     #[rule(val: ($Sub | $Add | $Bang)+)]
     UnOp { val: Vec<TokenRef> },
 
-    #[rule($BracketOpen & (((range: $Range) & (val: Value)?) | (val: Value)) & $BracketClose)]
-    Index { range: TokenRef, val: NodeRef },
+    #[rule($BracketOpen & (val: Value) & $BracketClose)]
+    Index { val: NodeRef },
 
     #[rule($Open & (values: Value)*{$Comma} & $Close)]
     ValueParenthesis { values: Vec<NodeRef> },
@@ -555,9 +549,9 @@ pub enum RustNode {
     #[rule(val: ATTR_ITEM+)]
     AnyTokens { val: Vec<TokenRef> },
 
-    #[rule(((brace_type: $Open) & (tokens: (MacroUse | AnyTokens))+ & $Close)
-        | ((brace_type: $BraceOpen) & (tokens: (MacroUse | AnyTokens))+ & $BraceClose)
-        | ((brace_type: $BracketOpen) & (tokens: (MacroUse | AnyTokens))+ & $BracketClose))]
+    #[rule(((brace_type: $Open) & (tokens: (MacroUse | AnyTokens))* & $Close)
+        | ((brace_type: $BraceOpen) & (tokens: (MacroUse | AnyTokens))* & $BraceClose)
+        | ((brace_type: $BracketOpen) & (tokens: (MacroUse | AnyTokens))* & $BracketClose))]
     MacroUse {
         brace_type: TokenRef,
         tokens: Vec<NodeRef>,
@@ -580,7 +574,7 @@ pub enum RustNode {
         default: NodeRef,
     },
 
-    #[rule($Open & (values: Value)*{$Comma} & $Close)]
+    #[rule($Open & (values: Value)*{$Comma} & $Comma? & $Close)]
     Call { values: Vec<NodeRef> },
 
     #[rule($Point & (name: $Ident) & (call: Call)?)]
@@ -675,19 +669,12 @@ pub enum RustNode {
         path: Vec<TokenRef>,
     },
 
-    #[rule(((refer: Reference) & (value: TupleFor))
-        | ($Open & (values: TupleFor)*{$Comma} & $Close))]
-    TupleLet {
-        refer: NodeRef,
-        value: NodeRef,
-        values: Vec<NodeRef>,
-    },
-
-    #[rule($Let & (((path: PathNoIdent) & (names: TupleLet)?) | (names: TupleLet))
-    & ($Colon & (type_: Type)?) & ($Set & (val: Value))? & $Semicolon?)]
+    #[rule($Let & (((path: PathNoIdent) & ($Open & (values: TupleFor)*{$Comma} & $Close)?)
+    | (names: TupleFor)) & ($Colon & (type_: Type))? & ($Set & (val: Value))? & $Semicolon?)]
     Let {
         path: NodeRef,
         names: NodeRef,
+        values: Vec<NodeRef>,
         type_: NodeRef,
         val: NodeRef,
     },
