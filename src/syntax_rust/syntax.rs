@@ -27,7 +27,7 @@ use std::vec::Vec;
 #[token(super::lexis::RustToken)]
 #[error(lady_deirdre::syntax::SyntaxError)]
 #[skip($Whitespace | $NewLine)]
-
+/*
 #[define(ANY = (
     $As
     | $Async
@@ -85,8 +85,8 @@ use std::vec::Vec;
     | $Comma
     | $Point
     | $Range
-    | $Apostrophe
-    | $AsciiChar
+    | $Char
+    | $Lable
     | $Colon
     | $DoubleColon
     | $Dollar
@@ -109,9 +109,9 @@ use std::vec::Vec;
     | $Ident
     | $String
 ))]
-
-// #[define(ANY = ($Ident | $Comma | $Point | $Range | $Apostrophe))]
-
+*/
+#[define(ANY = ($Ident | $Comma | $Point | $Range | $Char | $Lable))]
+/*
 #[define(ATTR_ITEM = (
     $As
     | $Async
@@ -163,8 +163,8 @@ use std::vec::Vec;
     | $Comma
     | $Point
     | $Range
-    | $Apostrophe
-    | $AsciiChar
+    | $Char
+    | $Lable
     | $Colon
     | $DoubleColon
     | $Dollar
@@ -187,8 +187,8 @@ use std::vec::Vec;
     | $Ident
     | $String
 ))]
-
-// #[define(ATTR_ITEM = ($Ident | $LSelf | $USelf | $Super | $DoubleColon))]
+*/
+#[define(ATTR_ITEM = ($Ident | $LSelf | $USelf | $Super | $DoubleColon))]
 #[define(PATH_ITEM = ($Ident | $LSelf | $USelf | $Super))]
 pub enum RustNode {
     // Root
@@ -314,7 +314,7 @@ pub enum RustNode {
         code: NodeRef,
     },
 
-    #[rule($Apostrophe & (value: ($Ident | $Static)))]
+    #[rule(value: $Lable)]
     Lifetime { value: TokenRef },
 
     // M
@@ -488,8 +488,8 @@ pub enum RustNode {
     Number { value: TokenRef },
     #[rule(value: $String)]
     String { value: TokenRef },
-    // #[rule(value: (($AsciiChar | $Apostrophe) & ANY? & $Apostrophe))]
-    // Char { value: Vec<TokenRef> },
+    #[rule(value: $Char)]
+    Char { value: TokenRef },
     #[rule((value: SingleVal)+{op: ($BinOp | $Refer | $Less | $Greater)})]
     Value {
         value: Vec<NodeRef>,
@@ -497,7 +497,7 @@ pub enum RustNode {
     },
 
     #[rule((prefix: (Reference | UnOp)*)
-    & (value: (ValueParenthesis | ValueIdent | String | /* Char | */ Number | ValueBrackets
+    & (value: (ValueParenthesis | ValueIdent | String | Char | Number | ValueBrackets
         | CodeBlock | Match | If | For | While))
     & ((range: $Range) & (next: Value))?
     & (methods: (Method | Index | Number))* & ($As & (as_type: Type))*)]
