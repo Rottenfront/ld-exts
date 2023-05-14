@@ -1,21 +1,21 @@
-// ///////////////////////////////////////////////////////////////////////////// //
-// Copyright (c) 2023 Bankov Andrey "Rottenfront"                                //
-//                                                                               //
-// Permission is hereby granted, free of charge, to any person obtaining a copy  //
-// of this software and associated documentation files (the "Software"), to deal //
-// in the Software without restriction, including without limitation the rights  //
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell     //
-// copies of the Software, and to permit persons to whom the Software is         //
-// furnished to do so, subject to the following conditions:                      //
-//                                                                               //
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR    //
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,      //
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE   //
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER        //
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, //
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE //
-// SOFTWARE.                                                                     //
-// ///////////////////////////////////////////////////////////////////////////// //
+/*
+ * Copyright (c) 2023 Bankov Andrey "Rottenfront"
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AN D NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+*/
 
 use core::fmt::Display;
 use lady_deirdre::lexis::LexisSession;
@@ -43,6 +43,7 @@ pub enum RustToken {
     Let,
     Loop,
     Macro,
+    MacroRules,
     Match,
     Mod,
     Move,
@@ -143,35 +144,11 @@ macro_rules! word {
             return Self::$i;
         }
     };
-    /*
-    ($session:expr, $i:ident, $f:expr, $( $o:expr ),*) => {
+    
+    ($session:expr, $i:ident, $f:expr $(, $o:expr )*) => {
         if $session.character() == $f {
             $session.advance();
-            word!($session, $i, $( $o, )*)
-        }
-    };*/
-    ($session:expr, $i:ident, $f1:expr) => {
-        if $session.character() == $f1 {
-            $session.advance();
-            word!($session, $i)
-        }
-    };
-    ($session:expr, $i:ident, $f1:expr, $f2:expr) => {
-        if $session.character() == $f1 {
-            $session.advance();
-            word!($session, $i, $f2)
-        }
-    };
-    ($session:expr, $i:ident, $f1:expr, $f2:expr, $f3:expr) => {
-        if $session.character() == $f1 {
-            $session.advance();
-            word!($session, $i, $f2, $f3)
-        }
-    };
-    ($session:expr, $i:ident, $f1:expr, $f2:expr, $f3:expr, $f4:expr) => {
-        if $session.character() == $f1 {
-            $session.advance();
-            word!($session, $i, $f2, $f3, $f4)
+            word!($session, $i $(, $o )*)
         }
     };
 }
@@ -187,41 +164,41 @@ impl lady_deirdre::lexis::Token for RustToken {
             session.advance();
             let next = session.character();
             match (state, current, next) {
-                (1, '0'..='9', _) => loop {
-                    if session.character() == ' '
-                        || session.character() == '\t'
-                        || session.character() == '\r'
-                        || session.character() == '\x0b'
-                        || session.character() == '\n'
-                        || session.character() == '('
-                        || session.character() == ')'
-                        || session.character() == '\x0c'
-                        || session.character() == '<'
-                        || session.character() == '>'
-                        || session.character() == '{'
-                        || session.character() == '}'
-                        || session.character() == '['
-                        || session.character() == ']'
-                        || session.character() == ','
-                        || session.character() == '|'
-                        || session.character() == '\''
-                        || session.character() == ':'
-                        || session.character() == '$'
-                        || session.character() == ';'
-                        || session.character() == '-'
-                        || session.character() == '%'
-                        || session.character() == '^'
-                        || session.character() == '='
-                        || session.character() == '+'
-                        || session.character() == '&'
-                        || session.character() == '*'
-                        || session.character() == '/'
-                        || session.character() == '~'
-                        || session.character() == '@'
-                        || session.character() == '\\'
-                        || session.character() == '!'
-                        || session.character() == '?'
-                        || session.character() == '#'
+                (1, '0'..='9', ch) => {
+                    if ch == ' '
+                        || ch == '\t'
+                        || ch == '\r'
+                        || ch == '\x0b'
+                        || ch == '\n'
+                        || ch == '('
+                        || ch == ')'
+                        || ch == '\x0c'
+                        || ch == '<'
+                        || ch == '>'
+                        || ch == '{'
+                        || ch == '}'
+                        || ch == '['
+                        || ch == ']'
+                        || ch == ','
+                        || ch == '|'
+                        || ch == '\''
+                        || ch == ':'
+                        || ch == '$'
+                        || ch == ';'
+                        || ch == '-'
+                        || ch == '%'
+                        || ch == '^'
+                        || ch == '='
+                        || ch == '+'
+                        || ch == '&'
+                        || ch == '*'
+                        || ch == '/'
+                        || ch == '~'
+                        || ch == '@'
+                        || ch == '\\'
+                        || ch == '!'
+                        || ch == '?'
+                        || ch == '#'
                     {
                         session.submit();
                         return Self::Number;
@@ -341,7 +318,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                     session.submit();
                     return Self::BinOp;
                 }
-                (1, '>' | '=' | '<', '=') => {
+                (1, '>' | '=' | '<' | '!', '=') => {
                     session.advance();
                     session.submit();
                     return Self::BinOp;
@@ -514,6 +491,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                     if session.character() == 'r' {
                         session.advance();
                         if session.character() == 'e' {
+                            session.advance();
                             word!(session, Break, 'a', 'k');
                         } else if session.character() == '"' {
                             session.advance();
@@ -701,6 +679,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                         if session.character() == 'c' {
                             session.advance();
                             word!(session, Macro, 'r', 'o');
+                            word!(session, MacroRules, '_', 'r', 'u', 'l', 'e', 's', '!');
                         } else if session.character() == 't' {
                             session.advance();
                             word!(session, Match, 'c', 'h');
@@ -781,7 +760,6 @@ impl lady_deirdre::lexis::Token for RustToken {
                                 session.advance();
                                 tmp_string_hash_count -= 1;
                             }
-                            string_hash_count = 0;
                             session.submit();
                             return Self::String;
                         }
@@ -797,7 +775,6 @@ impl lady_deirdre::lexis::Token for RustToken {
                                 }
                                 tmp_string_hash_count -= 1;
                             }
-                            string_hash_count = 0;
                             session.submit();
                             return Self::String;
                         }
@@ -997,55 +974,49 @@ impl lady_deirdre::lexis::Token for RustToken {
                         || ch == '!'
                         || ch == '?'
                         || ch == '#'
+                        || ch == '\\'
                     {
-                        session.advance();
-                        if ch == '\'' {
-                            session.advance();
-                        }
-                        session.submit();
-                        return Self::Char;
-                    } else if ch == '\\' {
                         state = 8;
                     } else {
                         session.advance();
-                        if ch == '\'' {
+                        if session.character() == '\'' {
                             session.advance();
                             session.submit();
                             return Self::Char;
-                        } else if ch == ' '
-                            || ch == '\t'
-                            || ch == '\r'
-                            || ch == '\x0b'
-                            || ch == '\x0c'
-                            || ch == '\n'
-                            || ch == '('
-                            || ch == ')'
-                            || ch == '<'
-                            || ch == '>'
-                            || ch == '{'
-                            || ch == '}'
-                            || ch == '['
-                            || ch == ']'
-                            || ch == ','
-                            || ch == '|'
-                            || ch == '.'
-                            || ch == ':'
-                            || ch == '$'
-                            || ch == ';'
-                            || ch == '-'
-                            || ch == '%'
-                            || ch == '^'
-                            || ch == '='
-                            || ch == '+'
-                            || ch == '&'
-                            || ch == '*'
-                            || ch == '/'
-                            || ch == '~'
-                            || ch == '@'
-                            || ch == '\\'
-                            || ch == '!'
-                            || ch == '?'
-                            || ch == '#'
+                        } else if session.character() == ' '
+                            || session.character() == '\t'
+                            || session.character() == '\r'
+                            || session.character() == '\x0b'
+                            || session.character() == '\x0c'
+                            || session.character() == '\n'
+                            || session.character() == '('
+                            || session.character() == ')'
+                            || session.character() == '<'
+                            || session.character() == '>'
+                            || session.character() == '{'
+                            || session.character() == '}'
+                            || session.character() == '['
+                            || session.character() == ']'
+                            || session.character() == ','
+                            || session.character() == '|'
+                            || session.character() == '.'
+                            || session.character() == ':'
+                            || session.character() == '$'
+                            || session.character() == ';'
+                            || session.character() == '-'
+                            || session.character() == '%'
+                            || session.character() == '^'
+                            || session.character() == '='
+                            || session.character() == '+'
+                            || session.character() == '&'
+                            || session.character() == '*'
+                            || session.character() == '/'
+                            || session.character() == '~'
+                            || session.character() == '@'
+                            || session.character() == '\\'
+                            || session.character() == '!'
+                            || session.character() == '?'
+                            || session.character() == '#'
                         {
                             session.submit();
                             return Self::Lable;
@@ -1163,6 +1134,7 @@ impl lady_deirdre::lexis::Token for RustToken {
             }
         }
         match state {
+            2 => Self::Number,
             6 | 7 => Self::String,
             10 => Self::Lable,
             8 | 9 | 11 => Self::Char,
@@ -1198,6 +1170,7 @@ impl Display for RustToken {
             Self::Let => "let",
             Self::Loop => "loop",
             Self::Macro => "macro",
+            Self::MacroRules => "macro_rules!",
             Self::Match => "match",
             Self::Mod => "mod",
             Self::Move => "move",

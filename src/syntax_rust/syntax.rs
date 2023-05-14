@@ -27,91 +27,6 @@ use std::vec::Vec;
 #[token(super::lexis::RustToken)]
 #[error(lady_deirdre::syntax::SyntaxError)]
 #[skip($Whitespace | $NewLine)]
-
-#[define(ANY = (
-    $As
-    | $Async
-    | $Await
-    | $Break
-    | $Const
-    | $Continue
-    | $Crate
-    | $Do
-    | $Dyn
-    | $Else
-    | $Enum
-    | $Extern
-    | $False
-    | $Fn
-    | $For
-    | $If
-    | $Impl
-    | $In
-    | $Let
-    | $Loop
-    | $Macro
-    | $Match
-    | $Mod
-    | $Move
-    | $Mut
-    | $Pub
-    | $Ref
-    | $Return
-    | $LSelf
-    | $USelf
-    | $Static
-    | $Struct
-    | $Super
-    | $Trait
-    | $True
-    | $Try
-    | $Type
-    | $Union
-    | $Unsafe
-    | $Use
-    | $Where
-    | $While
-    | $Yield
-    | $BasicType
-    | $Number
-    | $Open
-    | $Close
-    | $Less
-    | $Greater
-    | $BraceOpen
-    | $BraceClose
-    | $BracketOpen
-    | $BracketClose
-    | $Comma
-    | $Point
-    | $Range
-    | $Char
-    | $Lable
-    | $Colon
-    | $DoubleColon
-    | $Dollar
-    | $Semicolon
-    | $BinOp
-    | $Add
-    | $Sub
-    | $Set
-    | $Refer
-    | $Tilda
-    | $At
-    | $Backslash
-    | $Bang
-    | $Quest
-    | $Hash
-    | $HashBang
-    | $Arrow
-    | $SetOp
-    | $Escape
-    | $Ident
-    | $String
-))]
-
-// #[define(ANY = ($Ident | $Comma | $Point | $Range | $Char | $Lable))]
-
 #[define(ATTR_ITEM = (
     $As
     | $Async
@@ -203,15 +118,23 @@ pub enum RustNode {
 
     #[rule((attrs: AttrOuter)* & (mods: PubConstruct)? & (mods: (Extern | Unsafe))?
     & (value: (StructDefConstruct | AttrInner | EnumDefConstruct | UseConstruct | FnDefConstruct | TraitDef
-    | ImplStatement | TypeDef | ModuleDef | TraitDef | ImplStatement | ConstDef | StaticDef)))]
+    | ImplStatement | TypeDef | ModuleDef | TraitDef | ImplStatement | ConstDef | StaticDef | MacroRules)))]
     RootItem {
         attrs: Vec<NodeRef>,
         mods: Vec<NodeRef>,
         value: NodeRef,
     },
 
+    #[rule($MacroRules & (name: $Ident) & $BraceOpen & (items: MacroRulesItem)* & $BraceClose)]
     MacroRules {
         name: TokenRef,
+        items: Vec<NodeRef>,
+    },
+
+    #[rule((template: MacroUse) & $MatchArrow & (code: MacroUse) & $Semicolon)]
+    MacroRulesItem {
+        template: NodeRef,
+        code: NodeRef,
     },
 
     #[rule($HashBang & $BracketOpen & (name: Path) & (arg: MacroUse)? & $BracketClose)]
@@ -287,7 +210,7 @@ pub enum RustNode {
     #[rule($Less & (items: TypeForGeneric)+{$Comma} & $Greater)]
     GenericDef { items: Vec<NodeRef> },
 
-    #[rule($Less & (items: GenericUseType)+{$Comma} & $Greater)]
+    #[rule($Less & (items: (GenericUseType | Lifetime))+{$Comma} & $Greater)]
     GenericUse { items: Vec<NodeRef> },
 
     #[rule((path: Path) & ($Set & (_type: Type))?)]
@@ -317,9 +240,9 @@ pub enum RustNode {
     #[rule($Mod & (name: $Ident) & (code: (Semicolon | ModuleBlock)))]
     ModuleDef { name: TokenRef, code: NodeRef },
 
-    #[rule(((prefix: $DoubleColon) | ((prefix: ($Crate | $LSelf | $USelf)) & $DoubleColon)
-        | ((path: $Super) & $DoubleColon)+)?
-        & (path: $Ident)+{$DoubleColon})]
+    #[rule((((prefix: $DoubleColon) | ((prefix: ($Crate | $LSelf)) & $DoubleColon)
+        | ((path: $Super) & $DoubleColon)+)? & (path: $Ident)+{$DoubleColon})
+        | ((path: $USelf) & ($DoubleColon & (path: $Ident))*))]
     Path {
         prefix: TokenRef,
         path: Vec<TokenRef>,
@@ -492,7 +415,7 @@ pub enum RustNode {
 
     #[rule(((prefix: (Reference | UnOp)*)
     & ((value: (ValueParenthesis | ValueIdent | String | Char | Number | ValueBrackets
-        | CodeBlock | Match | If | For | While))
+        | CodeBlock | Match | If | For | While | Loop))
     & ((range: $Range) & (next: Value))?
     & (methods: (Method | Index))*) | ((range: $Range) & (next: Value)?)) & ($As & (as_type: Type))*)]
     SingleVal {
@@ -583,7 +506,7 @@ pub enum RustNode {
     #[rule($BraceOpen & (actions: (Action | Let | Continue | Break | Return | Lable))* & $BraceClose)]
     CodeBlock { actions: Vec<NodeRef> },
 
-    #[rule((lhs: Value) & (((op: ($SetOp | $Set)) & (rhs: Value) & $Semicolon) | (end: $Semicolon))?)]
+    #[rule((lhs: Value) & (((op: ($SetOp | $Set)) & (rhs: Value) & $Semicolon?) | (end: $Semicolon))?)]
     Action {
         lhs: NodeRef,
         op: TokenRef,
@@ -605,8 +528,8 @@ pub enum RustNode {
     },
 
     #[rule((prefix: (Reference | UnOp)*)
-    & (value: (ValueParenthesis | ValNoConstructIdent | String | /* Char | */ Number | ValueBrackets
-        | CodeBlock | Match | If | For | While))
+    & (value: (ValueParenthesis | ValNoConstructIdent | String | Char | Number | ValueBrackets
+        | CodeBlock | Match | If | For | While | Loop))
     & ((range: $Range) & (next: ValNoConstruct))?
     & (methods: (Method | Index | Number))* & ($As & (as_type: Type))*)]
     SingleValNoCostruct {
@@ -626,13 +549,13 @@ pub enum RustNode {
         values: Vec<NodeRef>,
     },
 
-    #[rule((lable: Lifetime) & $Colon & (val: (While | For | CodeBlock)))]
+    #[rule((lable: Lifetime) & $Colon & (val: (While | For | CodeBlock | Loop)))]
     Lable { lable: NodeRef, val: NodeRef },
 
     #[rule($Match & (val: ValNoConstruct) & $BraceOpen & (items: MatchItem*) & $BraceClose)]
     Match { val: NodeRef, items: Vec<NodeRef> },
 
-    #[rule((val: Value) & $MatchArrow & (ret: Value) & $Comma?)]
+    #[rule((val: Value) & $MatchArrow & (ret: (Action | Let | Continue | Break | Return | Lable)) & $Comma?)]
     MatchItem { val: NodeRef, ret: NodeRef },
 
     #[rule($For & (val: TupleFor) & $In & (arr: ValNoConstruct) & (block: CodeBlock))]
@@ -644,6 +567,9 @@ pub enum RustNode {
 
     #[rule($While & (cond: (ValNoConstruct | Let) & (block: CodeBlock)))]
     While { cond: NodeRef, block: NodeRef },
+
+    #[rule($Loop & (block: CodeBlock))]
+    Loop { block: NodeRef },
 
     #[rule($If & (cond: (ValNoConstruct | Let)) & (block: CodeBlock) & ($Else & (next: (CodeBlock | If)))?)]
     If {

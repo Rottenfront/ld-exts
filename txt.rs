@@ -43,6 +43,7 @@ pub enum RustToken {
     Let,
     Loop,
     Macro,
+    MacroRules,
     Match,
     Mod,
     Move,
@@ -127,3 +128,1138 @@ macro_rules! advance {
         }
     };
 }
+
+macro_rules! word {
+    ($session:expr, $i:ident) => {
+        if $session.character() == ' ' || $session.character() == '\t' || $session.character() == '\r' || $session.character() == '\x0b'
+        || $session.character() == '\n'  || $session.character() == '('  || $session.character() == ')'  || $session.character() == '\x0c'
+        || $session.character() == '<'   || $session.character() == '>'  || $session.character() == '{'  || $session.character() == '}'
+        || $session.character() == '['   || $session.character() == ']'  || $session.character() == ','  || $session.character() == '|'
+        || $session.character() == '.'   || $session.character() == '\'' || $session.character() == ':'  || $session.character() == '$'
+        || $session.character() == ';'   || $session.character() == '-'  || $session.character() == '%'  || $session.character() == '^'
+        || $session.character() == '='   || $session.character() == '+'  || $session.character() == '&'  || $session.character() == '*'
+        || $session.character() == '/'   || $session.character() == '~'  || $session.character() == '@'  || $session.character() == '\\'
+        || $session.character() == '!'   || $session.character() == '?'  || $session.character() == '#' {
+            $session.submit();
+            return Self::$i;
+        }
+    };
+    
+    ($session:expr, $i:ident, $f:expr $(, $o:expr )*) => {
+        if $session.character() == $f {
+            $session.advance();
+            word!($session, $i $(, $o )*)
+        }
+    };
+    /*($session:expr, $i:ident, $f1:expr) => {
+        if $session.character() == $f1 {
+            $session.advance();
+            word!($session, $i)
+        }
+    };
+    ($session:expr, $i:ident, $f1:expr, $f2:expr) => {
+        if $session.character() == $f1 {
+            $session.advance();
+            word!($session, $i, $f2)
+        }
+    };
+    ($session:expr, $i:ident, $f1:expr, $f2:expr, $f3:expr) => {
+        if $session.character() == $f1 {
+            $session.advance();
+            word!($session, $i, $f2, $f3)
+        }
+    };
+    ($session:expr, $i:ident, $f1:expr, $f2:expr, $f3:expr, $f4:expr) => {
+        if $session.character() == $f1 {
+            $session.advance();
+            word!($session, $i, $f2, $f3, $f4)
+        }
+    };*/
+}
+
+impl lady_deirdre::lexis::Token for RustToken {
+    fn new(session: &mut impl LexisSession) -> Self {
+        let mut state = 1usize;
+        let mut string_hash_count = 0usize;
+        let mut tmp_string_hash_count = 0usize;
+        let mut comment_nesting = 0usize;
+        loop {
+            let current = session.character();
+            session.advance();
+            let next = session.character();
+            match (state, current, next) {
+                (1, '0'..='9', ch) => {
+                    if ch == ' '
+                        || ch == '\t'
+                        || ch == '\r'
+                        || ch == '\x0b'
+                        || ch == '\n'
+                        || ch == '('
+                        || ch == ')'
+                        || ch == '\x0c'
+                        || ch == '<'
+                        || ch == '>'
+                        || ch == '{'
+                        || ch == '}'
+                        || ch == '['
+                        || ch == ']'
+                        || ch == ','
+                        || ch == '|'
+                        || ch == '\''
+                        || ch == ':'
+                        || ch == '$'
+                        || ch == ';'
+                        || ch == '-'
+                        || ch == '%'
+                        || ch == '^'
+                        || ch == '='
+                        || ch == '+'
+                        || ch == '&'
+                        || ch == '*'
+                        || ch == '/'
+                        || ch == '~'
+                        || ch == '@'
+                        || ch == '\\'
+                        || ch == '!'
+                        || ch == '?'
+                        || ch == '#'
+                    {
+                        session.submit();
+                        return Self::Number;
+                    }
+                    state = 2;
+                },
+                (2, _, ch) => {
+                    if ch == ' '
+                        || ch == '\t'
+                        || ch == '\r'
+                        || ch == '\x0b'
+                        || ch == '\n'
+                        || ch == '('
+                        || ch == ')'
+                        || ch == '\x0c'
+                        || ch == '<'
+                        || ch == '>'
+                        || ch == '{'
+                        || ch == '}'
+                        || ch == '['
+                        || ch == ']'
+                        || ch == ','
+                        || ch == '|'
+                        || ch == '\''
+                        || ch == ':'
+                        || ch == '$'
+                        || ch == ';'
+                        || ch == '-'
+                        || ch == '%'
+                        || ch == '^'
+                        || ch == '='
+                        || ch == '+'
+                        || ch == '&'
+                        || ch == '*'
+                        || ch == '/'
+                        || ch == '~'
+                        || ch == '@'
+                        || ch == '\\'
+                        || ch == '!'
+                        || ch == '?'
+                        || ch == '#'
+                    {
+                        session.submit();
+                        return Self::Number;
+                    }
+                }
+                (1 | 3, '\t' | '\u{b}'..='\r' | ' ', '\t' | '\u{b}'..='\r' | ' ') => state = 3,
+                (1 | 3, '\t' | '\u{b}'..='\r' | ' ', _) => {
+                    session.submit();
+                    return Self::Whitespace;
+                }
+                (1 | 4, '\n', '\n') => state = 4,
+                (1 | 4, '\n', _) => {
+                    session.submit();
+                    return Self::NewLine;
+                }
+                (1, '.', '.') => {
+                    session.advance();
+                    if session.character() == '=' {
+                        session.advance();
+                    }
+                    session.submit();
+                    return Self::Range;
+                }
+                (1, ':', ':') => {
+                    session.advance();
+                    session.submit();
+                    return Self::DoubleColon;
+                }
+                (1, '&', '&') => {
+                    session.advance();
+                    session.submit();
+                    return Self::BinOp;
+                }
+                (1, '|', '|') => {
+                    session.advance();
+                    session.submit();
+                    return Self::BinOp;
+                }
+                (1, '#', '!') => {
+                    session.advance();
+                    session.submit();
+                    return Self::HashBang;
+                }
+                (1, '=', '>') => {
+                    session.advance();
+                    session.submit();
+                    return Self::MatchArrow;
+                }
+                (1, '-', '>') => {
+                    session.advance();
+                    session.submit();
+                    return Self::Arrow;
+                }
+                (1, '+' | '-' | '/' | '*' | '^' | '|' | '%' | '&', '=') => {
+                    session.advance();
+                    session.submit();
+                    return Self::SetOp;
+                }
+                (1, '>', '>') => {
+                    session.advance();
+                    if session.character() == '=' {
+                        session.advance();
+                        session.submit();
+                        return Self::SetOp;
+                    }
+                    session.submit();
+                    return Self::BinOp;
+                }
+                (1, '<', '<') => {
+                    session.advance();
+                    if session.character() == '=' {
+                        session.advance();
+                        session.submit();
+                        return Self::SetOp;
+                    }
+                    session.submit();
+                    return Self::BinOp;
+                }
+                (1, '>' | '=' | '<', '=') => {
+                    session.advance();
+                    session.submit();
+                    return Self::BinOp;
+                }
+                (1, '/', '/') => {
+                    session.advance();
+                    if session.character() == '\n' {
+                        session.advance();
+                        session.submit();
+                        return Self::Comment;
+                    }
+                    state = 12;
+                }
+                (1, '/', '*') => {
+                    state = 13;
+                    session.advance();
+                }
+                (12, ch, _) => {
+                    if ch == '\n' {
+                        session.submit();
+                        return Self::Comment;
+                    }
+                }
+                (13, ch1, ch2) => {
+                    if ch1 == '*' && ch2 == '/' {
+                        if comment_nesting > 0 {
+                            comment_nesting -= 1;
+                            session.advance();
+                        } else {
+                            session.advance();
+                            session.submit();
+                            return Self::Comment;
+                        }
+                    } else if ch1 == '/' && ch2 == '*' {
+                        comment_nesting += 1;
+                        session.advance();
+                    }
+                }
+                (1, '(', _) => {
+                    session.submit();
+                    return Self::Open;
+                }
+                (1, ')', _) => {
+                    session.submit();
+                    return Self::Close;
+                }
+                (1, '<', _) => {
+                    session.submit();
+                    return Self::Less;
+                }
+                (1, '>', _) => {
+                    session.submit();
+                    return Self::Greater;
+                }
+                (1, '{', _) => {
+                    session.submit();
+                    return Self::BraceOpen;
+                }
+                (1, '}', _) => {
+                    session.submit();
+                    return Self::BraceClose;
+                }
+                (1, '[', _) => {
+                    session.submit();
+                    return Self::BracketOpen;
+                }
+                (1, ']', _) => {
+                    session.submit();
+                    return Self::BracketClose;
+                }
+                (1, '.', _) => {
+                    session.submit();
+                    return Self::Point;
+                }
+                (1, ':', _) => {
+                    session.submit();
+                    return Self::Colon;
+                }
+                (1, '$', _) => {
+                    session.submit();
+                    return Self::Dollar;
+                }
+                (1, ',', _) => {
+                    session.submit();
+                    return Self::Comma;
+                }
+                (1, ';', _) => {
+                    session.submit();
+                    return Self::Semicolon;
+                }
+                (1, '+', _) => {
+                    session.submit();
+                    return Self::Add;
+                }
+                (1, '=', _) => {
+                    session.submit();
+                    return Self::Set;
+                }
+                (1, '&' | '*', _) => {
+                    session.submit();
+                    return Self::Refer;
+                }
+                (1, '/' | '%' | '^' | '|', _) => {
+                    session.submit();
+                    return Self::BinOp;
+                }
+                (1, '~', _) => {
+                    session.submit();
+                    return Self::Tilda;
+                }
+                (1, '@', _) => {
+                    session.submit();
+                    return Self::At;
+                }
+                (1, '!', _) => {
+                    session.submit();
+                    return Self::Bang;
+                }
+                (1, '?', _) => {
+                    session.submit();
+                    return Self::Quest;
+                }
+                (1, '#', _) => {
+                    session.submit();
+                    return Self::Hash;
+                }
+                (1, '\\', '\'' | '"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' | '\n' | '0') => {
+                    session.submit();
+                    return Self::Escape;
+                }
+                (1, '\\', 'x') => {
+                    advance!(session, 3);
+                    session.submit();
+                    return Self::Escape;
+                }
+                (1, '\\', 'u') => {
+                    session.advance();
+                    if session.character() == '{' {
+                        state = 14;
+                    } else {
+                        session.submit();
+                        return Self::Escape;
+                    }
+                }
+                (14, ch, _) => {
+                    if ch == '}' {
+                        session.submit();
+                        return Self::Escape;
+                    }
+                }
+
+                (1, 'a', _) => {
+                    // 'a' 's'
+                    // 'a' 's' 'y' 'n' 'c'
+                    // 'a' 'w' 'a' 'i' 't'
+                    if session.character() == 's' {
+                        session.advance();
+                        word!(session, As);
+                        word!(session, Async, 'y', 'n', 'c');
+                    } else if session.character() == 'w' {
+                        session.advance();
+                        word!(session, Await, 'a', 'i', 't');
+                    }
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, 'b', _) => {
+                    // 'b' 'r' 'e' 'a' 'k'
+                    // 'b' 'o' 'o' 'l'
+                    if session.character() == 'r' {
+                        session.advance();
+                        if session.character() == 'e' {
+                            session.advance();
+                            word!(session, Break, 'a', 'k');
+                        } else if session.character() == '"' {
+                            session.advance();
+                            if session.character() == '"' {
+                                session.advance();
+                                session.submit();
+                                return Self::String;
+                            }
+                            state = 11;
+                            continue;
+                        } else if session.character() == '#' {
+                            while session.character() == '#' {
+                                session.advance();
+                                string_hash_count += 1;
+                            }
+                            if session.character() == '"' {
+                                tmp_string_hash_count = string_hash_count;
+                                state = 11;
+                                continue;
+                            } else {
+                                state = 5;
+                                string_hash_count = 0;
+                                continue;
+                            }
+                        }
+                    } else if session.character() == 'o' {
+                        session.advance();
+                        word!(session, BasicType, 'o', 'l');
+                    } else if session.character() == '\'' {
+                        state = 8;
+                        continue;
+                    } else if session.character() == '"' {
+                        state = 6;
+                        continue;
+                    }
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, 'c', _) => {
+                    // 'c' 'o' 'n' 's' 't'
+                    // 'c' 'o' 'n' 't' 'i' 'n' 'u' 'e'
+                    // 'c' 'r' 'a' 't' 'e'
+                    // 'c' 'h' 'a' 'r'
+                    if session.character() == 'o' {
+                        session.advance();
+                        if session.character() == 'n' {
+                            session.advance();
+                            if session.character() == 's' {
+                                session.advance();
+                                word!(session, Const, 't');
+                            } else if session.character() == 't' {
+                                word!(session, Continue, 'i', 'n', 'u', 'e');
+                            }
+                        }
+                    } else if session.character() == 'r' {
+                        session.advance();
+                        word!(session, Crate, 'a', 't', 'e');
+                    } else if session.character() == 'h' {
+                        session.advance();
+                        word!(session, BasicType, 'a', 'r');
+                    }
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, 'd', _) => {
+                    // 'd' 'o'
+                    // 'd' 'y' 'n'
+                    if session.character() == 'o' {
+                        session.advance();
+                        word!(session, Do);
+                    } else if session.character() == 'y' {
+                        session.advance();
+                        word!(session, Dyn, 'n');
+                    }
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, 'e', _) => {
+                    // 'e' 'l' 's' 'e'
+                    // 'e' 'n' 'u' 'm'
+                    // 'e' 'x' 't' 'e' 'r' 'n'
+                    if session.character() == 'l' {
+                        session.advance();
+                        word!(session, Else, 's', 'e');
+                    } else if session.character() == 'n' {
+                        session.advance();
+                        word!(session, Enum, 'u', 'm');
+                    } else if session.character() == 'x' {
+                        session.advance();
+                        word!(session, Extern, 't', 'e', 'r', 'n');
+                    }
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, 'f', _) => {
+                    // 'f' 'a' 'l' 's' 'e'
+                    // 'f' 'n'
+                    // 'f' 'o' 'r'
+                    // 'f' '3' '2'
+                    // 'f' '6' '4'
+                    if session.character() == 'a' {
+                        session.advance();
+                        word!(session, Else, 's', 'e');
+                    } else if session.character() == 'n' {
+                        session.advance();
+                        word!(session, Fn);
+                    } else if session.character() == 'o' {
+                        session.advance();
+                        word!(session, For, 'r');
+                    } else if session.character() == '3' {
+                        session.advance();
+                        word!(session, BasicType, '2');
+                    } else if session.character() == '6' {
+                        session.advance();
+                        word!(session, BasicType, '4');
+                    }
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, 'i', _) => {
+                    // 'i' 'f'
+                    // 'i' 'm' 'p' 'l'
+                    // 'i' 'n'
+                    // 'i' 's' 'i' 'z' 'e'
+                    // 'i' '1' '2' '8'
+                    // 'i' '1' '6'
+                    // 'i' '3' '2'
+                    // 'i' '6' '4'
+                    // 'i' '8'
+                    if session.character() == 'f' {
+                        session.advance();
+                        word!(session, If);
+                    } else if session.character() == 'm' {
+                        session.advance();
+                        word!(session, Impl, 'p', 'l');
+                    } else if session.character() == 'n' {
+                        session.advance();
+                        word!(session, In);
+                    } else if session.character() == 's' {
+                        session.advance();
+                        word!(session, BasicType, 'i', 'z', 'e');
+                    } else if session.character() == '1' {
+                        session.advance();
+                        if session.character() == '2' {
+                            session.advance();
+                            word!(session, BasicType, '8');
+                        } else if session.character() == '6' {
+                            session.advance();
+                            word!(session, BasicType);
+                        }
+                    } else if session.character() == '3' {
+                        session.advance();
+                        word!(session, BasicType, '2');
+                    } else if session.character() == '6' {
+                        session.advance();
+                        word!(session, BasicType, '4');
+                    } else if session.character() == '8' {
+                        session.advance();
+                        word!(session, BasicType, '8');
+                    }
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, 'l', _) => {
+                    // 'l' 'e' 't'
+                    // 'l' 'o' 'o' 'p'
+                    if session.character() == 'e' {
+                        session.advance();
+                        word!(session, Let, 't');
+                    } else if session.character() == 'o' {
+                        session.advance();
+                        word!(session, Loop, 'o', 'p');
+                    }
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, 'm', _) => {
+                    // 'm' 'a' 'c' 'r' 'o'
+                    // 'm' 'a' 't' 'c' 'h'
+                    // 'm' 'o' 'd'
+                    // 'm' 'o' 'v' 'e'
+                    // 'm' 'u' 't'
+                    if session.character() == 'a' {
+                        session.advance();
+                        if session.character() == 'c' {
+                            session.advance();
+                            word!(session, Macro, 'r', 'o');
+                            word!(session, MacroRules, '_', 'r', 'u', 'l', 'e', 's', '!');
+                        } else if session.character() == 't' {
+                            session.advance();
+                            word!(session, Match, 'c', 'h');
+                        }
+                    } else if session.character() == 'o' {
+                        session.advance();
+                        if session.character() == 'd' {
+                            session.advance();
+                            word!(session, Mod);
+                        } else if session.character() == 'v' {
+                            session.advance();
+                            word!(session, Move, 'e');
+                        }
+                    } else if session.character() == 'u' {
+                        session.advance();
+                        word!(session, Mut, 't');
+                    }
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, 'p', 'u') => {
+                    // 'p' 'u' 'b'
+                    session.advance();
+                    word!(session, Pub, 'b');
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, 'r', _) => {
+                    // 'r' 'e' 'f'
+                    // 'r' 'e' 't' 'u' 'r' 'n'
+                    if session.character() == 'e' {
+                        session.advance();
+                        if session.character() == 'f' {
+                            session.advance();
+                            word!(session, Ref);
+                        } else if session.character() == 't' {
+                            session.advance();
+                            word!(session, Return, 'u', 'r', 'n');
+                        }
+                    } else if session.character() == '"' {
+                        println!("abc");
+                        session.advance();
+                        if session.character() == '"' {
+                            session.advance();
+                            session.submit();
+                            return Self::String;
+                        }
+                        state = 11;
+                        continue;
+                    } else if session.character() == '#' {
+                        while session.character() == '#' {
+                            session.advance();
+                            string_hash_count += 1;
+                        }
+                        if session.character() == '"' {
+                            tmp_string_hash_count = string_hash_count;
+                            state = 11;
+                            continue;
+                        } else {
+                            state = 5;
+                            string_hash_count = 0;
+                            continue;
+                        }
+                    }
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (11, ch, _) => {
+                    println!("b");
+                    'b: {
+                        if ch == '"' {
+                            println!("a");
+                            while tmp_string_hash_count > 0 {
+                                if session.character() != '#' {
+                                    println!("bac");
+                                    break 'b;
+                                }
+                                session.advance();
+                                tmp_string_hash_count -= 1;
+                            }
+                            session.submit();
+                            return Self::String;
+                        }
+                    }
+                    'a: {
+                        if session.character() == '"' {
+                            println!("a");
+                            while tmp_string_hash_count > 0 {
+                                session.advance();
+                                if session.character() != '#' {
+                                    println!("bac");
+                                    break 'a;
+                                }
+                                tmp_string_hash_count -= 1;
+                            }
+                            session.submit();
+                            return Self::String;
+                        }
+                    }
+                    tmp_string_hash_count = string_hash_count;
+                }
+                (1, 'S', 'e') => {
+                    // 'S' 'e' 'l' 'f'
+                    session.advance();
+                    word!(session, USelf, 'l', 'f');
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, 's', _) => {
+                    // 's' 'e' 'l' 'f'
+                    // 's' 't' 'a' 't' 'i' 'c'
+                    // 's' 't' 'r'
+                    // 's' 't' 'r' 'u' 'c' 't'
+                    // 's' 'u' 'p' 'e' 'r'
+                    if session.character() == 'e' {
+                        session.advance();
+                        word!(session, LSelf, 'l', 'f');
+                    } else if session.character() == 't' {
+                        session.advance();
+                        if session.character() == 'a' {
+                            session.advance();
+                            word!(session, Static, 't', 'i', 'c');
+                        } else if session.character() == 'r' {
+                            session.advance();
+                            word!(session, BasicType);
+                            word!(session, Struct, 'u', 'c', 't');
+                        }
+                    } else if session.character() == 'u' {
+                        session.advance();
+                        word!(session, Super, 'p', 'e', 'r');
+                    }
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, 't', _) => {
+                    // 't' 'r' 'a' 'i' 't'
+                    // 't' 'r' 'u' 'e'
+                    // 't' 'r' 'y'
+                    // 't' 'y' 'p' 'e'
+                    if session.character() == 'r' {
+                        session.advance();
+                        if session.character() == 'a' {
+                            session.advance();
+                            word!(session, Trait, 'i', 't');
+                        } else if session.character() == 'u' {
+                            session.advance();
+                            word!(session, True, 'e');
+                        } else if session.character() == 'y' {
+                            session.advance();
+                            word!(session, Try);
+                        }
+                    } else if session.character() == 'y' {
+                        session.advance();
+                        word!(session, Type, 'p', 'e');
+                    }
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, 'u', _) => {
+                    // 'u' 'n' 'i' 'o' 'n'
+                    // 'u' 'n' 's' 'a' 'f' 'e'
+                    // 'u' 's' 'e'
+                    // 'u' 's' 'i' 'z' 'e'
+                    // 'u' '1' '6'
+                    // 'u' '1' '2' '8'
+                    // 'u' '3' '2'
+                    // 'u' '6' '4'
+                    // 'u' '8'
+                    if session.character() == 'n' {
+                        session.advance();
+                        if session.character() == 'i' {
+                            session.advance();
+                            word!(session, Union, 'o', 'n');
+                        } else if session.character() == 's' {
+                            session.advance();
+                            word!(session, Unsafe, 'a', 'f', 'e');
+                        }
+                    } else if session.character() == 's' {
+                        session.advance();
+                        if session.character() == 'e' {
+                            session.advance();
+                            word!(session, Use);
+                        } else if session.character() == 'i' {
+                            session.advance();
+                            word!(session, BasicType, 'z', 'e');
+                        }
+                    } else if session.character() == '1' {
+                        session.advance();
+                        if session.character() == '2' {
+                            session.advance();
+                            word!(session, BasicType, '8');
+                        } else if session.character() == '6' {
+                            session.advance();
+                            word!(session, BasicType);
+                        }
+                    } else if session.character() == '3' {
+                        session.advance();
+                        word!(session, BasicType, '2');
+                    } else if session.character() == '6' {
+                        session.advance();
+                        word!(session, BasicType, '4');
+                    } else if session.character() == '8' {
+                        session.advance();
+                        word!(session, BasicType, '8');
+                    }
+                    word!(session, Ident);
+
+                    state = 5;
+                }
+                (1, 'w', 'h') => {
+                    // 'w' 'h' 'e' 'r' 'e'
+                    // 'w' 'h' 'i' 'l' 'e'
+                    session.advance();
+                    if session.character() == 'i' {
+                        session.advance();
+                        word!(session, While, 'l', 'e');
+                    } else if session.character() == 'e' {
+                        session.advance();
+                        word!(session, Where, 'r', 'e');
+                    }
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, 'y', 'i') => {
+                    // 'y' 'i' 'e' 'l' 'd'
+                    session.advance();
+                    word!(session, Yield, 'e', 'l', 'd');
+                    word!(session, Ident);
+                    state = 5;
+                }
+                (1, '"', ch) => {
+                    if ch == '"' {
+                        session.advance();
+                        session.submit();
+                        return Self::String;
+                    }
+                    state = 6;
+                }
+                (6, ch1, ch2) => {
+                    if ch1 != '\\' && ch2 == '"' {
+                        session.advance();
+                        session.submit();
+                        return Self::String;
+                    }
+                    if ch1 == '\\' && ch2 == '\\' {
+                        state = 7;
+                    }
+                }
+                (7, _, ch2) => {
+                    if ch2 == '"' {
+                        session.advance();
+                        session.submit();
+                        return Self::String;
+                    }
+                    state = 6;
+                }
+                (1, '\'', ch) => {
+                    if ch == '\'' {
+                        session.advance();
+                        session.submit();
+                        return Self::Char;
+                    } else if ch == ' '
+                        || ch == '\t'
+                        || ch == '\r'
+                        || ch == '\x0b'
+                        || ch == '\x0c'
+                        || ch == '\n'
+                        || ch == '('
+                        || ch == ')'
+                        || ch == '<'
+                        || ch == '>'
+                        || ch == '{'
+                        || ch == '}'
+                        || ch == '['
+                        || ch == ']'
+                        || ch == ','
+                        || ch == '|'
+                        || ch == '.'
+                        || ch == ':'
+                        || ch == '$'
+                        || ch == ';'
+                        || ch == '-'
+                        || ch == '%'
+                        || ch == '^'
+                        || ch == '='
+                        || ch == '+'
+                        || ch == '&'
+                        || ch == '*'
+                        || ch == '/'
+                        || ch == '~'
+                        || ch == '@'
+                        || ch == '!'
+                        || ch == '?'
+                        || ch == '#'
+                        || ch == '\\'
+                    {
+                        state = 8;
+                    } else {
+                        session.advance();
+                        if session.character() == '\'' {
+                            session.advance();
+                            session.submit();
+                            return Self::Char;
+                        } else if session.character() == ' '
+                            || session.character() == '\t'
+                            || session.character() == '\r'
+                            || session.character() == '\x0b'
+                            || session.character() == '\x0c'
+                            || session.character() == '\n'
+                            || session.character() == '('
+                            || session.character() == ')'
+                            || session.character() == '<'
+                            || session.character() == '>'
+                            || session.character() == '{'
+                            || session.character() == '}'
+                            || session.character() == '['
+                            || session.character() == ']'
+                            || session.character() == ','
+                            || session.character() == '|'
+                            || session.character() == '.'
+                            || session.character() == ':'
+                            || session.character() == '$'
+                            || session.character() == ';'
+                            || session.character() == '-'
+                            || session.character() == '%'
+                            || session.character() == '^'
+                            || session.character() == '='
+                            || session.character() == '+'
+                            || session.character() == '&'
+                            || session.character() == '*'
+                            || session.character() == '/'
+                            || session.character() == '~'
+                            || session.character() == '@'
+                            || session.character() == '\\'
+                            || session.character() == '!'
+                            || session.character() == '?'
+                            || session.character() == '#'
+                        {
+                            session.submit();
+                            return Self::Lable;
+                        } else {
+                            state = 10;
+                        }
+                    }
+                }
+                (8, ch1, ch2) => {
+                    if ch1 != '\\' && ch2 == '\'' {
+                        session.advance();
+                        session.submit();
+                        return Self::Char;
+                    }
+                    if ch1 == '\\' && ch2 == '\\' {
+                        state = 9;
+                    }
+                }
+                (9, _, ch2) => {
+                    if ch2 == '\'' {
+                        session.advance();
+                        session.submit();
+                        return Self::Char;
+                    }
+                    state = 8;
+                }
+                (10, _, ch) => {
+                    if ch == '\'' {
+                        session.advance();
+                        session.submit();
+                        return Self::Char;
+                    } else if ch == ' '
+                        || ch == '\t'
+                        || ch == '\r'
+                        || ch == '\x0b'
+                        || ch == '\x0c'
+                        || ch == '\n'
+                        || ch == '('
+                        || ch == ')'
+                        || ch == '<'
+                        || ch == '>'
+                        || ch == '{'
+                        || ch == '}'
+                        || ch == '['
+                        || ch == ']'
+                        || ch == ','
+                        || ch == '|'
+                        || ch == '.'
+                        || ch == ':'
+                        || ch == '$'
+                        || ch == ';'
+                        || ch == '-'
+                        || ch == '%'
+                        || ch == '^'
+                        || ch == '='
+                        || ch == '+'
+                        || ch == '&'
+                        || ch == '*'
+                        || ch == '/'
+                        || ch == '~'
+                        || ch == '@'
+                        || ch == '\\'
+                        || ch == '!'
+                        || ch == '?'
+                        || ch == '#'
+                    {
+                        session.submit();
+                        return Self::Lable;
+                    }
+                }
+                (1 | 5, _, ch) => {
+                    if ch == ' '
+                        || ch == '\t'
+                        || ch == '\r'
+                        || ch == '\x0b'
+                        || ch == '\x0c'
+                        || ch == '\n'
+                        || ch == '('
+                        || ch == ')'
+                        || ch == '<'
+                        || ch == '>'
+                        || ch == '{'
+                        || ch == '}'
+                        || ch == '['
+                        || ch == ']'
+                        || ch == ','
+                        || ch == '|'
+                        || ch == '.'
+                        || ch == '\''
+                        || ch == ':'
+                        || ch == '$'
+                        || ch == ';'
+                        || ch == '-'
+                        || ch == '%'
+                        || ch == '^'
+                        || ch == '='
+                        || ch == '+'
+                        || ch == '&'
+                        || ch == '*'
+                        || ch == '/'
+                        || ch == '~'
+                        || ch == '@'
+                        || ch == '\\'
+                        || ch == '!'
+                        || ch == '?'
+                        || ch == '#'
+                    {
+                        session.submit();
+                        return Self::Ident;
+                    } else {
+                        state = 5;
+                    }
+                }
+                _ => break,
+            }
+        }
+        match state {
+            2 => Self::Number,
+            6 | 7 => Self::String,
+            10 => Self::Lable,
+            8 | 9 | 11 => Self::Char,
+            12 | 13 => Self::Comment,
+            14 => Self::Escape,
+            _ => Self::Ident,
+        }
+    }
+}
+
+impl Display for RustToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            Self::As => "as",
+            Self::MatchArrow => "=>",
+            Self::Async => "async",
+            Self::Await => "await",
+            Self::Break => "break",
+            Self::Const => "const",
+            Self::Continue => "continue",
+            Self::Crate => "crate",
+            Self::Do => "do",
+            Self::Dyn => "dyn",
+            Self::Else => "else",
+            Self::Enum => "enum",
+            Self::Extern => "extern",
+            Self::False => "false",
+            Self::Fn => "fn",
+            Self::For => "for",
+            Self::If => "if",
+            Self::Impl => "impl",
+            Self::In => "in",
+            Self::Let => "let",
+            Self::Loop => "loop",
+            Self::Macro => "macro",
+            Self::MacroRules => "macro_rules!",
+            Self::Match => "match",
+            Self::Mod => "mod",
+            Self::Move => "move",
+            Self::Mut => "mut",
+            Self::Pub => "pub",
+            Self::Ref => "ref",
+            Self::Return => "return",
+            Self::LSelf => "self",
+            Self::USelf => "Self",
+            Self::Static => "static",
+            Self::Struct => "struct",
+            Self::Super => "super",
+            Self::Trait => "trait",
+            Self::True => "true",
+            Self::Try => "try",
+            Self::Type => "type",
+            Self::Union => "union",
+            Self::Unsafe => "unsafe",
+            Self::Use => "use",
+            Self::Where => "where",
+            Self::While => "while",
+            Self::Yield => "yield",
+            Self::BasicType => "usize",
+            Self::Number => "0x0abcd",
+            Self::String => "STR",
+            Self::Ident => "IDENT",
+            Self::Open => "(",
+            Self::Close => ")",
+            Self::Less => "<",
+            Self::Greater => ">",
+            Self::BraceOpen => "{",
+            Self::BraceClose => "}",
+            Self::BracketOpen => "[",
+            Self::BracketClose => "]",
+            Self::Comma => ",",
+            Self::Point => ".",
+            Self::Range => "..",
+            Self::Char => "'a'",
+            Self::Lable => "'static",
+            Self::DoubleColon => "::",
+            Self::Colon => ":",
+            Self::Dollar => "$",
+            Self::Semicolon => ";",
+            Self::BinOp => "^",
+            Self::Add => "+",
+            Self::Sub => "-",
+            Self::Set => "=",
+            Self::Refer => "&",
+            Self::Tilda => "~",
+            Self::At => "@",
+            Self::Backslash => "\\",
+            Self::Escape => "\\n",
+            Self::Bang => "!",
+            Self::Quest => "?",
+            Self::Hash => "#",
+            Self::HashBang => "#!",
+            Self::Arrow => "->",
+            Self::SetOp => "+=",
+            Self::Whitespace => " ",
+            Self::NewLine => "\n",
+            Self::Comment => "/* */",
+        }
+        .fmt(f)
+    }
+}
+// ("r\"" & (ESCAPE | ^['"', '\\'])* & '\"')
+// ("r#\"" & (ESCAPE | ^['"', '\\'])* & "\"#")
+// ("r###\"" & (ESCAPE | ^['"', '\\'])* & "\"###")
