@@ -162,7 +162,7 @@ pub enum RustNode {
     #[rule($Open & (items: Type)*{$Comma} & $Close)]
     EnumItemAnonFields { items: Vec<NodeRef> },
 
-    #[rule($BraceOpen & (items: StructItem)*{$Comma} & $BraceClose)]
+    #[rule($BraceOpen & (items: StructItem)*{$Comma} & $Comma? & $BraceClose)]
     EnumItemFields { items: Vec<NodeRef> },
 
     #[rule($Enum & (name: $Ident) & (generic: GenericDef)? & (where_cond: Where)?
@@ -207,10 +207,16 @@ pub enum RustNode {
     },
 
     // G
-    #[rule($Less & (items: TypeForGeneric)+{$Comma} & $Greater)]
+    #[rule($Less & (items: (TypeForGeneric | LifetimeForGeneric))+{$Comma} & $Comma? & $Greater)]
     GenericDef { items: Vec<NodeRef> },
 
-    #[rule($Less & (items: (GenericUseType | Lifetime))+{$Comma} & $Greater)]
+    #[rule((lifetime: $Lable) & ($Colon & (val: $Lable)+{$Comma})?)]
+    LifetimeForGeneric {
+        lifetime: TokenRef,
+        val: Vec<TokenRef>,
+    },
+
+    #[rule($Less & (items: (GenericUseType | Lifetime))*{$Comma} & $Comma? & $Greater)]
     GenericUse { items: Vec<NodeRef> },
 
     #[rule((path: Path) & ($Set & (_type: Type))?)]
@@ -433,7 +439,7 @@ pub enum RustNode {
     #[rule($BracketOpen & (val: Value) & $BracketClose)]
     Index { val: NodeRef },
 
-    #[rule($Open & (values: Value)*{$Comma} & $Close)]
+    #[rule($Open & (values: Value)*{$Comma} & $Comma? & $Close)]
     ValueParenthesis { values: Vec<NodeRef> },
 
     #[rule($BracketOpen & (value: Value) & (($Comma & (values: Value))*
