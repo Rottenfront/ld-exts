@@ -40,7 +40,6 @@ use std::vec::Vec;
     | $Else
     | $Enum
     | $Extern
-    | $False
     | $Fn
     | $For
     | $If
@@ -62,7 +61,6 @@ use std::vec::Vec;
     | $Struct
     | $Super
     | $Trait
-    | $True
     | $Try
     | $Type
     | $Union
@@ -116,11 +114,16 @@ pub enum RustNode {
     #[rule($Where & (items: TypeForWhere)+{$Comma})]
     Where { items: Vec<NodeRef> },
 
-    #[rule((attrs: AttrOuter)* & (mods: PubConstruct)? & (mods: (Extern | Unsafe))?
-    & (value: (StructDefConstruct | AttrInner | EnumDefConstruct | UseConstruct | FnDefConstruct | TraitDef
-    | ImplStatement | TypeDef | ModuleDef | TraitDef | ImplStatement | ConstDef | StaticDef | MacroRules)))]
+    #[rule((attrs: AttrOuter)* & (value: RootItemVal))]
     RootItem {
         attrs: Vec<NodeRef>,
+        value: NodeRef,
+    },
+
+    #[rule((mods: PubConstruct)? & (mods: (Extern | Unsafe))?
+    & (value: (StructDefConstruct | AttrInner | EnumDefConstruct | UseConstruct | FnDefConstruct | TraitDef
+    | ImplStatement | TypeDef | ModuleDef | TraitDef | ImplStatement | ConstDef | StaticDef | MacroRules)))]
+    RootItemVal {
         mods: Vec<NodeRef>,
         value: NodeRef,
     },
@@ -195,7 +198,7 @@ pub enum RustNode {
     FnTyping { _type: NodeRef },
 
     #[rule($Fn & (name: $Ident) & (generic: GenericDef)?
-    & ($Open & (params: FnParameterConstruct)*{$Comma} & $Close) & (_type: FnTyping)?
+    & ($Open & (params: FnParameterConstruct)*{$Comma} & $Comma? & $Close) & (_type: FnTyping)?
     & (where_cond: Where)? & (code: (CodeBlock | Semicolon)))]
     FnDefConstruct {
         name: TokenRef,
@@ -509,8 +512,14 @@ pub enum RustNode {
     #[rule($Point & (name: $Ident) & (call: Call)?)]
     Method { name: TokenRef, call: NodeRef },
 
-    #[rule($BraceOpen & (actions: (Action | Let | Continue | Break | Return | Lable))* & $BraceClose)]
+    #[rule($BraceOpen & (actions: CodeBlockItem)* & $BraceClose)]
     CodeBlock { actions: Vec<NodeRef> },
+
+    #[rule((attrs: AttrOuter)* & (action: (Action | Let | Continue | Break | Return | Lable | RootItemVal)))]
+    CodeBlockItem {
+        attrs: Vec<NodeRef>,
+        action: NodeRef,
+    },
 
     #[rule((lhs: Value) & (((op: ($SetOp | $Set)) & (rhs: Value) & $Semicolon?) | (end: $Semicolon))?)]
     Action {

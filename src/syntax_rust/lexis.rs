@@ -34,7 +34,6 @@ pub enum RustToken {
     Else,
     Enum,
     Extern,
-    False,
     Fn,
     For,
     If,
@@ -57,7 +56,6 @@ pub enum RustToken {
     Struct,
     Super,
     Trait,
-    True,
     Try,
     Type,
     Union,
@@ -93,24 +91,24 @@ pub enum RustToken {
     Colon,       // :
     DoubleColon, // ::
 
-    Dollar,        // $
-    Semicolon,     // ;
-    BinOp,         // % ^ && || << >> / >= == <=
-    Add,           // +
-    Sub,           // -
-    Set,           // =
-    Refer,         // & *
-    Tilda,         // ~
-    At,            // @
-    Backslash,     // \\
-    Bang,          // !
-    Quest,         // ?
-    Hash,          // #
-    HashBang,      // #!
-    Arrow,         // ->
-    MatchArrow,    // =>
-    SetOp,         // += -= /= *= ^= |= %= &= <<= >>=
-    Comment,       // /* ... */
+    Dollar,     // $
+    Semicolon,  // ;
+    BinOp,      // % ^ && || << >> / >= == <=
+    Add,        // +
+    Sub,        // -
+    Set,        // =
+    Refer,      // & *
+    Tilda,      // ~
+    At,         // @
+    Backslash,  // \\
+    Bang,       // !
+    Quest,      // ?
+    Hash,       // #
+    HashBang,   // #!
+    Arrow,      // ->
+    MatchArrow, // =>
+    SetOp,      // += -= /= *= ^= |= %= &= <<= >>=
+    Comment,    // /* ... */
 
     Escape, // '\\' & (['\'', '"', '\\', '/', 'b', 'f', 'n', 'r', 't', '\n', '0'] | ('x' & HEX & HEX) | ("u{" & HEX & HEX & HEX & HEX & '}'))
 
@@ -131,20 +129,17 @@ macro_rules! advance {
 
 macro_rules! word {
     ($session:expr, $i:ident) => {
-        if $session.character() == ' ' || $session.character() == '\t' || $session.character() == '\r' || $session.character() == '\x0b'
-        || $session.character() == '\n'  || $session.character() == '('  || $session.character() == ')'  || $session.character() == '\x0c'
-        || $session.character() == '<'   || $session.character() == '>'  || $session.character() == '{'  || $session.character() == '}'
-        || $session.character() == '['   || $session.character() == ']'  || $session.character() == ','  || $session.character() == '|'
-        || $session.character() == '.'   || $session.character() == '\'' || $session.character() == ':'  || $session.character() == '$'
-        || $session.character() == ';'   || $session.character() == '-'  || $session.character() == '%'  || $session.character() == '^'
-        || $session.character() == '='   || $session.character() == '+'  || $session.character() == '&'  || $session.character() == '*'
-        || $session.character() == '/'   || $session.character() == '~'  || $session.character() == '@'  || $session.character() == '\\'
-        || $session.character() == '!'   || $session.character() == '?'  || $session.character() == '#' {
-            $session.submit();
-            return Self::$i;
+        match $session.character() {
+            '\'' | ' ' | '\t' | '\r' | '\x0b' | '\x0c' | '\n' | '(' | ')' | '<' | '>' | '{'
+            | '}' | '[' | ']' | ',' | '|' | '.' | ':' | '$' | ';' | '-' | '%' | '^'
+            | '=' | '+' | '&' | '*' | '/' | '~' | '@' | '\\' | '!' | '?' | '#' => {
+                $session.submit();
+                return Self::$i;
+            }
+            _ => {}
         }
     };
-    
+
     ($session:expr, $i:ident, $f:expr $(, $o:expr )*) => {
         if $session.character() == $f {
             $session.advance();
@@ -164,87 +159,24 @@ impl lady_deirdre::lexis::Token for RustToken {
             session.advance();
             let next = session.character();
             match (state, current, next) {
-                (1, '0'..='9', ch) => {
-                    if ch == ' '
-                        || ch == '\t'
-                        || ch == '\r'
-                        || ch == '\x0b'
-                        || ch == '\n'
-                        || ch == '('
-                        || ch == ')'
-                        || ch == '\x0c'
-                        || ch == '<'
-                        || ch == '>'
-                        || ch == '{'
-                        || ch == '}'
-                        || ch == '['
-                        || ch == ']'
-                        || ch == ','
-                        || ch == '|'
-                        || ch == '\''
-                        || ch == ':'
-                        || ch == '$'
-                        || ch == ';'
-                        || ch == '-'
-                        || ch == '%'
-                        || ch == '^'
-                        || ch == '='
-                        || ch == '+'
-                        || ch == '&'
-                        || ch == '*'
-                        || ch == '/'
-                        || ch == '~'
-                        || ch == '@'
-                        || ch == '\\'
-                        || ch == '!'
-                        || ch == '?'
-                        || ch == '#'
-                    {
+                (1, '0'..='9', ch) => match ch {
+                    '\'' | ' ' | '\t' | '\r' | '\x0b' | '\x0c' | '\n' | '(' | ')' | '<' | '>' | '{'
+                    | '}' | '[' | ']' | ',' | '|' | '.' | ':' | '$' | ';' | '-' | '%' | '^'
+                    | '=' | '+' | '&' | '*' | '/' | '~' | '@' | '\\' | '!' | '?' | '#' => {
                         session.submit();
                         return Self::Number;
-                    }
-                    state = 2;
+                    },
+                    _ => state = 2
                 },
-                (2, _, ch) => {
-                    if ch == ' '
-                        || ch == '\t'
-                        || ch == '\r'
-                        || ch == '\x0b'
-                        || ch == '\n'
-                        || ch == '('
-                        || ch == ')'
-                        || ch == '\x0c'
-                        || ch == '<'
-                        || ch == '>'
-                        || ch == '{'
-                        || ch == '}'
-                        || ch == '['
-                        || ch == ']'
-                        || ch == ','
-                        || ch == '|'
-                        || ch == '\''
-                        || ch == ':'
-                        || ch == '$'
-                        || ch == ';'
-                        || ch == '-'
-                        || ch == '%'
-                        || ch == '^'
-                        || ch == '='
-                        || ch == '+'
-                        || ch == '&'
-                        || ch == '*'
-                        || ch == '/'
-                        || ch == '~'
-                        || ch == '@'
-                        || ch == '\\'
-                        || ch == '!'
-                        || ch == '?'
-                        || ch == '#'
-                    {
+                (2, _, ch) => match ch {
+                    '\'' | ' ' | '\t' | '\r' | '\x0b' | '\x0c' | '\n' | '(' | ')' | '<' | '>' | '{'
+                    | '}' | '[' | ']' | ',' | '|' | '.' | ':' | '$' | ';' | '-' | '%' | '^'
+                    | '=' | '+' | '&' | '*' | '/' | '~' | '@' | '\\' | '!' | '?' | '#' => {
                         session.submit();
                         return Self::Number;
                     }
-                }
+                    _ => {}
+                },
                 (1 | 3, '\t' | '\u{b}'..='\r' | ' ', '\t' | '\u{b}'..='\r' | ' ') => state = 3,
                 (1 | 3, '\t' | '\u{b}'..='\r' | ' ', _) => {
                     session.submit();
@@ -470,62 +402,77 @@ impl lady_deirdre::lexis::Token for RustToken {
                     }
                 }
 
-                (1, 'a', _) => {
+                (1, 'a', ch) => {
                     // 'a' 's'
                     // 'a' 's' 'y' 'n' 'c'
                     // 'a' 'w' 'a' 'i' 't'
-                    if session.character() == 's' {
-                        session.advance();
-                        word!(session, As);
-                        word!(session, Async, 'y', 'n', 'c');
-                    } else if session.character() == 'w' {
-                        session.advance();
-                        word!(session, Await, 'a', 'i', 't');
+                    match ch {
+                        's' => {
+                            session.advance();
+                            word!(session, As);
+                            word!(session, Async, 'y', 'n', 'c');
+                        }
+                        'w' => {
+                            session.advance();
+                            word!(session, Await, 'a', 'i', 't');
+                        }
+                        _ => {}
                     }
                     word!(session, Ident);
                     state = 5;
                 }
-                (1, 'b', _) => {
+                (1, 'b', ch) => {
                     // 'b' 'r' 'e' 'a' 'k'
                     // 'b' 'o' 'o' 'l'
-                    if session.character() == 'r' {
-                        session.advance();
-                        if session.character() == 'e' {
+                    match ch {
+                        'r' => {
                             session.advance();
-                            word!(session, Break, 'a', 'k');
-                        } else if session.character() == '"' {
-                            session.advance();
-                            if session.character() == '"' {
-                                session.advance();
-                                session.submit();
-                                return Self::String;
-                            }
-                            state = 11;
-                            continue;
-                        } else if session.character() == '#' {
-                            while session.character() == '#' {
-                                session.advance();
-                                string_hash_count += 1;
-                            }
-                            if session.character() == '"' {
-                                tmp_string_hash_count = string_hash_count;
-                                state = 11;
-                                continue;
-                            } else {
-                                state = 5;
-                                string_hash_count = 0;
-                                continue;
+                            match session.character() {
+                                'e' => {
+                                    session.advance();
+                                    word!(session, Break, 'a', 'k');
+                                }
+                                '"' => {
+                                    session.advance();
+                                    if session.character() == '"' {
+                                        session.advance();
+                                        session.submit();
+                                        return Self::String;
+                                    }
+                                    state = 11;
+                                    continue;
+                                }
+                                '#' => {
+                                    while session.character() == '#' {
+                                        session.advance();
+                                        string_hash_count += 1;
+                                    }
+                                    if session.character() == '"' {
+                                        tmp_string_hash_count = string_hash_count;
+                                        state = 11;
+                                        continue;
+                                    } else {
+                                        state = 5;
+                                        string_hash_count = 0;
+                                        continue;
+                                    }
+                                }
+                                _ => {}
                             }
                         }
-                    } else if session.character() == 'o' {
-                        session.advance();
-                        word!(session, BasicType, 'o', 'l');
-                    } else if session.character() == '\'' {
-                        state = 8;
-                        continue;
-                    } else if session.character() == '"' {
-                        state = 6;
-                        continue;
+                        'o' => {
+                            session.advance();
+                            word!(session, BasicType, 'o', 'l');
+                        }
+                        '\'' => {
+                            state = 8;
+                            continue;
+                        }
+                        '"' => {
+                            state = 6;
+                            continue;
+                        }
+                        _ => {}
                     }
                     word!(session, Ident);
                     state = 5;
@@ -586,32 +533,34 @@ impl lady_deirdre::lexis::Token for RustToken {
                     word!(session, Ident);
                     state = 5;
                 }
-                (1, 'f', _) => {
-                    // 'f' 'a' 'l' 's' 'e'
+                (1, 'f', ch) => {
                     // 'f' 'n'
                     // 'f' 'o' 'r'
                     // 'f' '3' '2'
                     // 'f' '6' '4'
-                    if session.character() == 'a' {
-                        session.advance();
-                        word!(session, Else, 's', 'e');
-                    } else if session.character() == 'n' {
-                        session.advance();
-                        word!(session, Fn);
-                    } else if session.character() == 'o' {
-                        session.advance();
-                        word!(session, For, 'r');
-                    } else if session.character() == '3' {
-                        session.advance();
-                        word!(session, BasicType, '2');
-                    } else if session.character() == '6' {
-                        session.advance();
-                        word!(session, BasicType, '4');
+                    match ch {
+                        'n' => {
+                            session.advance();
+                            word!(session, Fn);
+                        }
+                        'o' => {
+                            session.advance();
+                            word!(session, For, 'r');
+                        }
+                        '3' => {
+                            session.advance();
+                            word!(session, BasicType, '2');
+                        }
+                        '6' => {
+                            session.advance();
+                            word!(session, BasicType, '4');
+                        }
+                        _ => {}
                     }
                     word!(session, Ident);
                     state = 5;
                 }
-                (1, 'i', _) => {
+                (1, 'i', ch) => {
                     // 'i' 'f'
                     // 'i' 'm' 'p' 'l'
                     // 'i' 'n'
@@ -621,49 +570,67 @@ impl lady_deirdre::lexis::Token for RustToken {
                     // 'i' '3' '2'
                     // 'i' '6' '4'
                     // 'i' '8'
-                    if session.character() == 'f' {
-                        session.advance();
-                        word!(session, If);
-                    } else if session.character() == 'm' {
-                        session.advance();
-                        word!(session, Impl, 'p', 'l');
-                    } else if session.character() == 'n' {
-                        session.advance();
-                        word!(session, In);
-                    } else if session.character() == 's' {
-                        session.advance();
-                        word!(session, BasicType, 'i', 'z', 'e');
-                    } else if session.character() == '1' {
-                        session.advance();
-                        if session.character() == '2' {
+                    match ch {
+                        'f' => {
+                            session.advance();
+                            word!(session, If);
+                        }
+                        'm' => {
+                            session.advance();
+                            word!(session, Impl, 'p', 'l');
+                        }
+                        'n' => {
+                            session.advance();
+                            word!(session, In);
+                        }
+                        's' => {
+                            session.advance();
+                            word!(session, BasicType, 'i', 'z', 'e');
+                        }
+                        '1' => {
+                            session.advance();
+                            match session.character() {
+                                '2' => {
+                                    session.advance();
+                                    word!(session, BasicType, '8');
+                                }
+                                '6' => {
+                                    session.advance();
+                                    word!(session, BasicType);
+                                }
+                                _ => {}
+                            }
+                        }
+                        '3' => {
+                            session.advance();
+                            word!(session, BasicType, '2');
+                        }
+                        '6' => {
+                            session.advance();
+                            word!(session, BasicType, '4');
+                        }
+                        '8' => {
                             session.advance();
                             word!(session, BasicType, '8');
-                        } else if session.character() == '6' {
-                            session.advance();
-                            word!(session, BasicType);
                         }
-                    } else if session.character() == '3' {
-                        session.advance();
-                        word!(session, BasicType, '2');
-                    } else if session.character() == '6' {
-                        session.advance();
-                        word!(session, BasicType, '4');
-                    } else if session.character() == '8' {
-                        session.advance();
-                        word!(session, BasicType, '8');
+                        _ => {}
                     }
                     word!(session, Ident);
                     state = 5;
                 }
-                (1, 'l', _) => {
+                (1, 'l', ch) => {
                     // 'l' 'e' 't'
                     // 'l' 'o' 'o' 'p'
-                    if session.character() == 'e' {
-                        session.advance();
-                        word!(session, Let, 't');
-                    } else if session.character() == 'o' {
-                        session.advance();
-                        word!(session, Loop, 'o', 'p');
+                    match ch {
+                        'e' => {
+                            session.advance();
+                            word!(session, Let, 't');
+                        }
+                        'o' => {
+                            session.advance();
+                            word!(session, Loop, 'o', 'p');
+                        }
+                        _ => {}
                     }
                     word!(session, Ident);
                     state = 5;
@@ -748,13 +715,10 @@ impl lady_deirdre::lexis::Token for RustToken {
                     state = 5;
                 }
                 (11, ch, _) => {
-                    println!("b");
                     'b: {
                         if ch == '"' {
-                            println!("a");
                             while tmp_string_hash_count > 0 {
                                 if session.character() != '#' {
-                                    println!("bac");
                                     break 'b;
                                 }
                                 session.advance();
@@ -766,7 +730,6 @@ impl lady_deirdre::lexis::Token for RustToken {
                     }
                     'a: {
                         if session.character() == '"' {
-                            println!("a");
                             while tmp_string_hash_count > 0 {
                                 session.advance();
                                 if session.character() != '#' {
@@ -788,35 +751,43 @@ impl lady_deirdre::lexis::Token for RustToken {
                     word!(session, Ident);
                     state = 5;
                 }
-                (1, 's', _) => {
+                (1, 's', ch) => {
                     // 's' 'e' 'l' 'f'
                     // 's' 't' 'a' 't' 'i' 'c'
                     // 's' 't' 'r'
                     // 's' 't' 'r' 'u' 'c' 't'
                     // 's' 'u' 'p' 'e' 'r'
-                    if session.character() == 'e' {
-                        session.advance();
-                        word!(session, LSelf, 'l', 'f');
-                    } else if session.character() == 't' {
-                        session.advance();
-                        if session.character() == 'a' {
+                    match ch {
+                        'e' => {
                             session.advance();
-                            word!(session, Static, 't', 'i', 'c');
-                        } else if session.character() == 'r' {
-                            session.advance();
-                            word!(session, BasicType);
-                            word!(session, Struct, 'u', 'c', 't');
+                            word!(session, LSelf, 'l', 'f');
                         }
-                    } else if session.character() == 'u' {
-                        session.advance();
-                        word!(session, Super, 'p', 'e', 'r');
+                        't' => {
+                            session.advance();
+                            match session.character() {
+                                'a' => {
+                                    session.advance();
+                                    word!(session, Static, 't', 'i', 'c');
+                                }
+                                'r' => {
+                                    session.advance();
+                                    word!(session, BasicType);
+                                    word!(session, Struct, 'u', 'c', 't');
+                                }
+                                _ => {}
+                            }
+                        }
+                        'u' => {
+                            session.advance();
+                            word!(session, Super, 'p', 'e', 'r');
+                        }
+                        _ => {}
                     }
                     word!(session, Ident);
                     state = 5;
                 }
                 (1, 't', _) => {
                     // 't' 'r' 'a' 'i' 't'
-                    // 't' 'r' 'u' 'e'
                     // 't' 'r' 'y'
                     // 't' 'y' 'p' 'e'
                     if session.character() == 'r' {
@@ -824,9 +795,6 @@ impl lady_deirdre::lexis::Token for RustToken {
                         if session.character() == 'a' {
                             session.advance();
                             word!(session, Trait, 'i', 't');
-                        } else if session.character() == 'u' {
-                            session.advance();
-                            word!(session, True, 'e');
                         } else if session.character() == 'y' {
                             session.advance();
                             word!(session, Try);
@@ -936,95 +904,34 @@ impl lady_deirdre::lexis::Token for RustToken {
                     }
                     state = 6;
                 }
-                (1, '\'', ch) => {
-                    if ch == '\'' {
+                (1, '\'', ch) => match ch {
+                    '\'' => {
                         session.advance();
                         session.submit();
                         return Self::Char;
-                    } else if ch == ' '
-                        || ch == '\t'
-                        || ch == '\r'
-                        || ch == '\x0b'
-                        || ch == '\x0c'
-                        || ch == '\n'
-                        || ch == '('
-                        || ch == ')'
-                        || ch == '<'
-                        || ch == '>'
-                        || ch == '{'
-                        || ch == '}'
-                        || ch == '['
-                        || ch == ']'
-                        || ch == ','
-                        || ch == '|'
-                        || ch == '.'
-                        || ch == ':'
-                        || ch == '$'
-                        || ch == ';'
-                        || ch == '-'
-                        || ch == '%'
-                        || ch == '^'
-                        || ch == '='
-                        || ch == '+'
-                        || ch == '&'
-                        || ch == '*'
-                        || ch == '/'
-                        || ch == '~'
-                        || ch == '@'
-                        || ch == '!'
-                        || ch == '?'
-                        || ch == '#'
-                        || ch == '\\'
-                    {
-                        state = 8;
-                    } else {
+                    }
+                    ' ' | '\t' | '\r' | '\x0b' | '\x0c' | '\n' | '(' | ')' | '<' | '>' | '{'
+                    | '}' | '[' | ']' | ',' | '|' | '.' | ':' | '$' | ';' | '-' | '%' | '^'
+                    | '=' | '+' | '&' | '*' | '/' | '~' | '@' | '\\' | '!' | '?' | '#' => state = 8,
+                    _ => {
                         session.advance();
-                        if session.character() == '\'' {
-                            session.advance();
-                            session.submit();
-                            return Self::Char;
-                        } else if session.character() == ' '
-                            || session.character() == '\t'
-                            || session.character() == '\r'
-                            || session.character() == '\x0b'
-                            || session.character() == '\x0c'
-                            || session.character() == '\n'
-                            || session.character() == '('
-                            || session.character() == ')'
-                            || session.character() == '<'
-                            || session.character() == '>'
-                            || session.character() == '{'
-                            || session.character() == '}'
-                            || session.character() == '['
-                            || session.character() == ']'
-                            || session.character() == ','
-                            || session.character() == '|'
-                            || session.character() == '.'
-                            || session.character() == ':'
-                            || session.character() == '$'
-                            || session.character() == ';'
-                            || session.character() == '-'
-                            || session.character() == '%'
-                            || session.character() == '^'
-                            || session.character() == '='
-                            || session.character() == '+'
-                            || session.character() == '&'
-                            || session.character() == '*'
-                            || session.character() == '/'
-                            || session.character() == '~'
-                            || session.character() == '@'
-                            || session.character() == '\\'
-                            || session.character() == '!'
-                            || session.character() == '?'
-                            || session.character() == '#'
-                        {
-                            session.submit();
-                            return Self::Lable;
-                        } else {
-                            state = 10;
+                        match session.character() {
+                            '\'' => {
+                                session.advance();
+                                session.submit();
+                                return Self::Char;
+                            }
+                            ' ' | '\t' | '\r' | '\x0b' | '\x0c' | '\n' | '(' | ')' | '<' | '>'
+                            | '{' | '}' | '[' | ']' | ',' | '|' | '.' | ':' | '$' | ';' | '-'
+                            | '%' | '^' | '=' | '+' | '&' | '*' | '/' | '~' | '@' | '\\' | '!'
+                            | '?' | '#' => {
+                                session.submit();
+                                return Self::Lable;
+                            }
+                            _ => state = 10,
                         }
                     }
-                }
+                },
                 (8, ch1, ch2) => {
                     if ch1 != '\\' && ch2 == '\'' {
                         session.advance();
@@ -1035,101 +942,37 @@ impl lady_deirdre::lexis::Token for RustToken {
                         state = 9;
                     }
                 }
-                (9, _, ch2) => {
-                    if ch2 == '\'' {
+                (9, _, ch) => {
+                    if ch == '\'' {
                         session.advance();
                         session.submit();
                         return Self::Char;
                     }
                     state = 8;
                 }
-                (10, _, ch) => {
-                    if ch == '\'' {
+                (10, _, ch) => match ch {
+                    '\'' => {
                         session.advance();
                         session.submit();
                         return Self::Char;
-                    } else if ch == ' '
-                        || ch == '\t'
-                        || ch == '\r'
-                        || ch == '\x0b'
-                        || ch == '\x0c'
-                        || ch == '\n'
-                        || ch == '('
-                        || ch == ')'
-                        || ch == '<'
-                        || ch == '>'
-                        || ch == '{'
-                        || ch == '}'
-                        || ch == '['
-                        || ch == ']'
-                        || ch == ','
-                        || ch == '|'
-                        || ch == '.'
-                        || ch == ':'
-                        || ch == '$'
-                        || ch == ';'
-                        || ch == '-'
-                        || ch == '%'
-                        || ch == '^'
-                        || ch == '='
-                        || ch == '+'
-                        || ch == '&'
-                        || ch == '*'
-                        || ch == '/'
-                        || ch == '~'
-                        || ch == '@'
-                        || ch == '\\'
-                        || ch == '!'
-                        || ch == '?'
-                        || ch == '#'
-                    {
+                    }
+                    ' ' | '\t' | '\r' | '\x0b' | '\x0c' | '\n' | '(' | ')' | '<' | '>' | '{'
+                    | '}' | '[' | ']' | ',' | '|' | '.' | ':' | '$' | ';' | '-' | '%' | '^'
+                    | '=' | '+' | '&' | '*' | '/' | '~' | '@' | '\\' | '!' | '?' | '#' => {
                         session.submit();
                         return Self::Lable;
                     }
-                }
-                (1 | 5, _, ch) => {
-                    if ch == ' '
-                        || ch == '\t'
-                        || ch == '\r'
-                        || ch == '\x0b'
-                        || ch == '\x0c'
-                        || ch == '\n'
-                        || ch == '('
-                        || ch == ')'
-                        || ch == '<'
-                        || ch == '>'
-                        || ch == '{'
-                        || ch == '}'
-                        || ch == '['
-                        || ch == ']'
-                        || ch == ','
-                        || ch == '|'
-                        || ch == '.'
-                        || ch == '\''
-                        || ch == ':'
-                        || ch == '$'
-                        || ch == ';'
-                        || ch == '-'
-                        || ch == '%'
-                        || ch == '^'
-                        || ch == '='
-                        || ch == '+'
-                        || ch == '&'
-                        || ch == '*'
-                        || ch == '/'
-                        || ch == '~'
-                        || ch == '@'
-                        || ch == '\\'
-                        || ch == '!'
-                        || ch == '?'
-                        || ch == '#'
-                    {
+                    _ => {}
+                },
+                (1 | 5, _, ch) => match ch {
+                    '\'' | ' ' | '\t' | '\r' | '\x0b' | '\x0c' | '\n' | '(' | ')' | '<' | '>' | '{'
+                    | '}' | '[' | ']' | ',' | '|' | '.' | ':' | '$' | ';' | '-' | '%' | '^'
+                    | '=' | '+' | '&' | '*' | '/' | '~' | '@' | '\\' | '!' | '?' | '#' => {
                         session.submit();
                         return Self::Ident;
-                    } else {
-                        state = 5;
-                    }
-                }
+                    },
+                    _ => state = 5
+                },
                 _ => break,
             }
         }
@@ -1161,7 +1004,6 @@ impl Display for RustToken {
             Self::Else => "else",
             Self::Enum => "enum",
             Self::Extern => "extern",
-            Self::False => "false",
             Self::Fn => "fn",
             Self::For => "for",
             Self::If => "if",
@@ -1184,7 +1026,6 @@ impl Display for RustToken {
             Self::Struct => "struct",
             Self::Super => "super",
             Self::Trait => "trait",
-            Self::True => "true",
             Self::Try => "try",
             Self::Type => "type",
             Self::Union => "union",
