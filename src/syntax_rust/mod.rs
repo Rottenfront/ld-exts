@@ -20,35 +20,44 @@
 pub mod lexis;
 pub mod syntax;
 
-use lady_deirdre::lexis::{CodeContent, SourceCode, ToSpan, TokenBuffer};
-use lady_deirdre::syntax::Node;
-use lady_deirdre::syntax::SyntaxTree;
+use std::{fs, thread};
 
-use std::fs;
-
+use lady_deirdre::{
+    lexis::{CodeContent, SourceCode, ToSpan, TokenBuffer},
+    syntax::{Node, SyntaxTree},
+};
 
 pub fn main() {
-    let code = TokenBuffer::<lexis::RustToken>::from(
-        fs::read_to_string("txt.rs").expect("Should have been able to read the file"),
-        // fs::read_to_string("src/syntax_rust/mod.rs")
-        //     .expect("Should have been able to read the file"),
-    );
+    let handle = thread::Builder::new()
+        .stack_size(1024 * 1024 * 1024 * 10)
+        .spawn(|| {
+            let code = TokenBuffer::<lexis::RustToken>::from(
+                fs::read_to_string(
+                    "txt.rs",
+                )
+                .expect("Should have been able to read the file"),
+                // fs::read_to_string("src/syntax_rust/mod.rs")
+                //     .expect("Should have been able to read the file"),
+            );
 
-    let tree = syntax::RustNode::parse(code.cursor(..));
+            println!("lexis");
 
-    println!(
-        "{}",
-        tree.errors()
-            .map(|error| format!("{}: {}", error.span().format(&code), error))
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
+            let tree = syntax::RustNode::parse(code.cursor(..));
+            println!("syntax");
 
-    println!(
-        "{}",
-        code.chunks(..)
-            .map(|chunk| chunk.token.to_string())
-            .collect::<Vec<_>>()
-            .join("|")
-    )
+            println!(
+                "{}",
+                code.chunks(..)
+                    .map(|chunk| chunk.token.to_string())
+                    .collect::<Vec<_>>()
+                    .join("|")
+            );
+
+            for error in tree.errors() {
+                println!("{}: {}", error.span().format(&code), error);
+            }
+        })
+        .unwrap();
+
+    handle.join().unwrap();
 }

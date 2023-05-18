@@ -230,6 +230,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                     session.submit();
                     return Self::SetOp;
                 }
+                /*
                 (1, '>', '>') => {
                     session.advance();
                     if session.character() == '=' {
@@ -250,6 +251,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                     session.submit();
                     return Self::BinOp;
                 }
+                 */
                 (1, '>' | '=' | '<' | '!', '=') => {
                     session.advance();
                     session.submit();

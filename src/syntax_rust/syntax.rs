@@ -222,9 +222,9 @@ pub enum RustNode {
     #[rule($Less & (items: (GenericUseType | Lifetime))*{$Comma} & $Comma? & $Greater)]
     GenericUse { items: Vec<NodeRef> },
 
-    #[rule((path: Path) & ($Set & (_type: Type))?)]
+    #[rule((name: Type) & ($Set & (_type: Type))?)]
     GenericUseType {
-        path: NodeRef,
+        name: NodeRef,
         _type: NodeRef,
     },
 
@@ -445,8 +445,8 @@ pub enum RustNode {
     #[rule($Open & (values: Value)*{$Comma} & $Comma? & $Close)]
     ValueParenthesis { values: Vec<NodeRef> },
 
-    #[rule($BracketOpen & (value: Value) & (($Comma & (values: Value))*
-        | ($Semicolon & (len: Value))) & $BracketClose)]
+    #[rule($BracketOpen & ((value: Value) & ((($Comma & (values: Value))*
+        & $Comma?) | ($Semicolon & (len: Value)))?)? & $BracketClose)]
     ValueBrackets {
         value: NodeRef,
         len: NodeRef,
@@ -500,7 +500,7 @@ pub enum RustNode {
     #[rule((name: $Ident) & ($Colon & (val: Value))?)]
     ConstructItem { name: TokenRef, val: NodeRef },
 
-    #[rule($BraceOpen & (items: ConstructItem)*{$Comma} & ($Range & (default: Value))? & $BraceClose)]
+    #[rule($BraceOpen & (items: ConstructItem)*{$Comma} & $Comma? & ($Range & (default: Value)?)? & $BraceClose)]
     Constructor {
         items: Vec<NodeRef>,
         default: NodeRef,
