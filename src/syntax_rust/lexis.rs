@@ -94,11 +94,12 @@ pub enum RustToken {
     Dollar,     // $
     Semicolon,  // ;
     BinOp,      // % ^ && || << >> / >= == <=
+    Pipe,       // |
     Add,        // +
     Sub,        // -
     Set,        // =
     Refer,      // & *
-    Tilda,      // ~
+    Tilde,      // ~
     At,         // @
     Backslash,  // \\
     Bang,       // !
@@ -110,21 +111,11 @@ pub enum RustToken {
     SetOp,      // += -= /= *= ^= |= %= &= <<= >>=
     Comment,    // /* ... */
 
-    Escape, // '\\' & (['\'', '"', '\\', '/', 'b', 'f', 'n', 'r', 't', '\n', '0'] | ('x' & HEX & HEX) | ("u{" & HEX & HEX & HEX & HEX & '}'))
-
     Ident,
 
-    String, // todo: implement String in lexer
+    String,
     Char,
-    Lable,
-}
-
-macro_rules! advance {
-    ($i:expr, $x:expr) => {
-        for _ in 0..$x {
-            $i.advance();
-        }
-    };
+    Label,
 }
 
 macro_rules! word {
@@ -355,13 +346,17 @@ impl lady_deirdre::lexis::Token for RustToken {
                     session.submit();
                     return Self::Refer;
                 }
-                (1, '/' | '%' | '^' | '|', _) => {
+                (1, '/' | '%' | '^', _) => {
                     session.submit();
                     return Self::BinOp;
                 }
+                (1, '|', _) => {
+                    session.submit();
+                    return Self::Pipe;
+                }
                 (1, '~', _) => {
                     session.submit();
-                    return Self::Tilda;
+                    return Self::Tilde;
                 }
                 (1, '@', _) => {
                     session.submit();
@@ -378,30 +373,6 @@ impl lady_deirdre::lexis::Token for RustToken {
                 (1, '#', _) => {
                     session.submit();
                     return Self::Hash;
-                }
-                (1, '\\', '\'' | '"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' | '\n' | '0') => {
-                    session.submit();
-                    return Self::Escape;
-                }
-                (1, '\\', 'x') => {
-                    advance!(session, 3);
-                    session.submit();
-                    return Self::Escape;
-                }
-                (1, '\\', 'u') => {
-                    session.advance();
-                    if session.character() == '{' {
-                        state = 14;
-                    } else {
-                        session.submit();
-                        return Self::Escape;
-                    }
-                }
-                (14, ch, _) => {
-                    if ch == '}' {
-                        session.submit();
-                        return Self::Escape;
-                    }
                 }
 
                 (1, 'a', ch) => {
@@ -928,7 +899,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                             | '%' | '^' | '=' | '+' | '&' | '*' | '/' | '~' | '@' | '\\' | '!'
                             | '?' | '#' => {
                                 session.submit();
-                                return Self::Lable;
+                                return Self::Label;
                             }
                             _ => state = 10,
                         }
@@ -962,7 +933,7 @@ impl lady_deirdre::lexis::Token for RustToken {
                     | '}' | '[' | ']' | ',' | '|' | '.' | ':' | '$' | ';' | '-' | '%' | '^'
                     | '=' | '+' | '&' | '*' | '/' | '~' | '@' | '\\' | '!' | '?' | '#' => {
                         session.submit();
-                        return Self::Lable;
+                        return Self::Label;
                     }
                     _ => {}
                 },
@@ -981,10 +952,9 @@ impl lady_deirdre::lexis::Token for RustToken {
         match state {
             2 => Self::Number,
             6 | 7 => Self::String,
-            10 => Self::Lable,
+            10 => Self::Label,
             8 | 9 | 11 => Self::Char,
             12 | 13 => Self::Comment,
-            14 => Self::Escape,
             _ => Self::Ident,
         }
     }
@@ -1052,20 +1022,20 @@ impl Display for RustToken {
             Self::Point => ".",
             Self::Range => "..",
             Self::Char => "'a'",
-            Self::Lable => "'static",
+            Self::Label => "'static",
             Self::DoubleColon => "::",
             Self::Colon => ":",
             Self::Dollar => "$",
             Self::Semicolon => ";",
             Self::BinOp => "^",
+            Self::Pipe => "|",
             Self::Add => "+",
             Self::Sub => "-",
             Self::Set => "=",
             Self::Refer => "&",
-            Self::Tilda => "~",
+            Self::Tilde => "~",
             Self::At => "@",
             Self::Backslash => "\\",
-            Self::Escape => "\\n",
             Self::Bang => "!",
             Self::Quest => "?",
             Self::Hash => "#",

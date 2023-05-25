@@ -19,13 +19,13 @@
 
 use lady_deirdre::{
     lexis::TokenRef,
-    syntax::{Node, NodeRef},
+    syntax::{Node, NodeRef, SyntaxSession, SyntaxError},
 };
-use std::vec::Vec;
+use super::lexis::RustToken;
 
 #[derive(Node, Debug, Clone)]
-#[token(super::lexis::RustToken)]
-#[error(lady_deirdre::syntax::SyntaxError)]
+#[token(RustToken)]
+#[error(SyntaxError)]
 #[skip($Whitespace | $NewLine)]
 #[define(ATTR_ITEM = (
     $As
@@ -77,17 +77,18 @@ use std::vec::Vec;
     | $Point
     | $Range
     | $Char
-    | $Lable
+    | $Label
     | $Colon
     | $DoubleColon
     | $Dollar
     | $Semicolon
     | $BinOp
+    | $Pipe
     | $Add
     | $Sub
     | $Set
     | $Refer
-    | $Tilda
+    | $Tilde
     | $At
     | $Backslash
     | $Bang
@@ -96,7 +97,6 @@ use std::vec::Vec;
     | $HashBang
     | $Arrow
     | $SetOp
-    | $Escape
     | $Ident
     | $String
 ))]
@@ -114,9 +114,10 @@ pub enum RustNode {
     #[rule($Where & (items: TypeForWhere)+{$Comma})]
     Where { items: Vec<NodeRef> },
 
-    #[rule((attrs: AttrOuter)* & (value: RootItemVal))]
+    #[rule((attrs: AttrOuter)* & (async_: $Async)? & (value: RootItemVal))]
     RootItem {
         attrs: Vec<NodeRef>,
+        async_: TokenRef,
         value: NodeRef,
     },
 
@@ -185,13 +186,15 @@ pub enum RustNode {
     // F
     // #[rule($False)]
     // False,
-    #[rule((name: $Ident) & $Colon & (_type: Type))]
-    FnParameter { name: TokenRef, _type: NodeRef },
+    #[rule((name: TypeNoRefer) & ($Colon & (_type: Type))?)]
+    FnParameter { name: NodeRef, _type: NodeRef },
 
+    /*
     #[rule((refer: Reference)? & $LSelf)]
     SelfUse { refer: NodeRef },
+    */
 
-    #[rule((attrs: AttrOuter)* & (value: (FnParameter | SelfUse)))]
+    #[rule((attrs: AttrOuter)* & (value: (FnParameter/* | SelfUse*/)))]
     FnParameterConstruct { attrs: Vec<NodeRef>, value: NodeRef },
 
     #[rule($Arrow & (_type: Type))]
@@ -213,7 +216,7 @@ pub enum RustNode {
     #[rule($Less & (items: (TypeForGeneric | LifetimeForGeneric))+{$Comma} & $Comma? & $Greater)]
     GenericDef { items: Vec<NodeRef> },
 
-    #[rule((lifetime: $Lable) & ($Colon & (val: $Lable)+{$Comma})?)]
+    #[rule((lifetime: $Label) & ($Colon & (val: $Label)+{$Comma})?)]
     LifetimeForGeneric {
         lifetime: TokenRef,
         val: Vec<TokenRef>,
@@ -239,7 +242,7 @@ pub enum RustNode {
         code: NodeRef,
     },
 
-    #[rule(value: $Lable)]
+    #[rule(value: $Label)]
     Lifetime { value: TokenRef },
 
     // M
@@ -249,9 +252,9 @@ pub enum RustNode {
     #[rule($Mod & (name: $Ident) & (code: (Semicolon | ModuleBlock)))]
     ModuleDef { name: TokenRef, code: NodeRef },
 
-    #[rule((((prefix: $DoubleColon) | ((prefix: ($Crate | $LSelf)) & $DoubleColon)
+    #[rule((((prefix: $DoubleColon) | ((prefix: ($Crate)) & $DoubleColon)
         | ((path: $Super) & $DoubleColon)+)? & (path: $Ident)+{$DoubleColon})
-        | ((path: $USelf) & ($DoubleColon & (path: $Ident))*))]
+        | ((path: ($USelf | $LSelf)) & ($DoubleColon & (path: $Ident))*))]
     Path {
         prefix: TokenRef,
         path: Vec<TokenRef>,
@@ -386,12 +389,17 @@ pub enum RustNode {
     #[rule($As & (name: $Ident))]
     UseStatementAs { name: TokenRef },
 
-    #[rule($Refer)]
-    Star,
+    #[rule(val: $Refer)]
+    Star { val: TokenRef },
 
     #[rule(((prefix: $DoubleColon) | ((prefix: ($Crate | $LSelf | $USelf)) & $DoubleColon)
-    | ((prefix: $Super) & $DoubleColon)+)? & (path: (Ident | UseBlock | Star))+{$DoubleColon} & (additional: UseStatementAs)?)]
-    UseStatementConstruct { prefix: Vec<TokenRef>, path: Vec<NodeRef>, additional: NodeRef },
+    | ((prefix: $Super) & $DoubleColon)+)? & (path: (Ident | UseBlock | Star))+{$DoubleColon}
+    & (additional: UseStatementAs)?)]
+    UseStatementConstruct {
+        prefix: Vec<TokenRef>,
+        path: Vec<NodeRef>,
+        additional: NodeRef,
+    },
 
     #[rule($Use & (st: UseStatementConstruct) & $Semicolon)]
     UseConstruct { st: NodeRef },
@@ -416,10 +424,18 @@ pub enum RustNode {
     String { value: TokenRef },
     #[rule(value: $Char)]
     Char { value: TokenRef },
-    #[rule((value: SingleVal)+{op: ($BinOp | $Refer | $Less | $Greater)})]
+    #[rule((value: SingleVal)+{op: ($BinOp | $Refer | $Less | $Greater)} | (clojure: Clojure))]
     Value {
         value: Vec<NodeRef>,
         op: Vec<TokenRef>,
+        clojure: NodeRef,
+    },
+
+    #[rule((mods: $Move)? & $Pipe & (params: FnParameter)* & $Pipe & (action: CodeBlockItem))]
+    Clojure {
+        mods: TokenRef,
+        params: Vec<NodeRef>,
+        action: NodeRef,
     },
 
     #[rule(((prefix: (Reference | UnOp)*)
@@ -509,15 +525,17 @@ pub enum RustNode {
     #[rule($Open & (values: Value)*{$Comma} & $Comma? & $Close)]
     Call { values: Vec<NodeRef> },
 
-    #[rule($Point & (name: $Ident) & (call: Call)?)]
+    #[rule($Point & (name: ($Ident | $Await)) & (call: Call)?)]
     Method { name: TokenRef, call: NodeRef },
 
     #[rule($BraceOpen & (actions: CodeBlockItem)* & $BraceClose)]
     CodeBlock { actions: Vec<NodeRef> },
 
-    #[rule((attrs: AttrOuter)* & (action: (Action | Let | Continue | Break | Return | Lable | RootItemVal)))]
+    #[rule((attrs: AttrOuter)* & (async_: $Async)? &
+           (action: (Action | Let | Continue | Break | Return | Label | RootItemVal)))]
     CodeBlockItem {
         attrs: Vec<NodeRef>,
+        async_: TokenRef,
         action: NodeRef,
     },
 
@@ -529,7 +547,8 @@ pub enum RustNode {
         end: TokenRef,
     },
 
-    #[rule((value: SingleValNoCostruct)+{op: ($BinOp | $Refer | $Less | $Greater)})]
+    #[index(12)]
+    #[rule((value: SingleValNoConstruct)+{op: ($BinOp | $Refer | $Less | $Greater)})]
     ValNoConstruct {
         value: Vec<NodeRef>,
         op: Vec<TokenRef>,
@@ -547,7 +566,7 @@ pub enum RustNode {
         | CodeBlock | Match | If | For | While | Loop))
     & ((range: $Range) & (next: ValNoConstruct))?
     & (methods: (Method | Index | Number))* & ($As & (as_type: Type))*)]
-    SingleValNoCostruct {
+    SingleValNoConstruct {
         prefix: Vec<NodeRef>,
         value: NodeRef,
         range: TokenRef,
@@ -564,13 +583,16 @@ pub enum RustNode {
         values: Vec<NodeRef>,
     },
 
-    #[rule((lable: Lifetime) & $Colon & (val: (While | For | CodeBlock | Loop)))]
-    Lable { lable: NodeRef, val: NodeRef },
+    #[rule((label: Lifetime) & $Colon & (val: (While | For | CodeBlock | Loop)))]
+    Label { label: NodeRef, val: NodeRef },
 
-    #[rule($Match & (val: ValNoConstruct) & $BraceOpen & (items: MatchItem*) & $BraceClose)]
-    Match { val: NodeRef, items: Vec<NodeRef> },
+    // #[parser(parse_match)]
+    // #[leftmost($Match)]
+    #[rule($Match & (value: ValNoConstruct) & $BraceOpen & (items: MatchItem)* & $BraceClose)]
+    Match { value: NodeRef, /* constructor: Option<NodeRef>,*/ items: Vec<NodeRef> },
 
-    #[rule((val: Value) & $MatchArrow & (ret: (Action | Let | Continue | Break | Return | Lable)) & $Comma?)]
+    #[index(10)]
+    #[rule((val: Value) & $MatchArrow & (ret: (Action | Let | Continue | Break | Return | Label)) & $Comma?)]
     MatchItem { val: NodeRef, ret: NodeRef },
 
     #[rule($For & (val: TupleFor) & $In & (arr: ValNoConstruct) & (block: CodeBlock))]
@@ -620,3 +642,6818 @@ pub enum RustNode {
         val: NodeRef,
     },
 }
+/*
+impl RustNode {
+    fn skip<'code>(session: &mut impl SyntaxSession<'code, Node = RustNode>) {
+        loop {
+            match session.token(0) {
+                Some(RustToken::Whitespace) | Some(RustToken::NewLine) => _ = session.advance(),
+                _ => break,
+            }
+        }
+    }
+    fn parse_MatchItem<'code>(
+        session: &mut impl ::lady_deirdre::syntax::SyntaxSession<
+            'code,
+            Node = RustNode,
+        >,
+    ) -> RustNode {
+        let mut state = 1usize;
+        let mut start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+            session,
+            0,
+        );
+        let mut capture_ret = ::lady_deirdre::syntax::NodeRef::nil();
+        let mut capture_val = ::lady_deirdre::syntax::NodeRef::nil();
+        'outer: loop {
+            match (
+                state,
+                ::lady_deirdre::lexis::TokenCursor::token(session, 0),
+            ) {
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::USelf { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Char { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Ref { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Loop { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::BracketOpen { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Add { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Less { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::If { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Sub { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::String { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::BraceOpen { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Refer { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Range { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Crate { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::DoubleColon { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Bang { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Ident { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::While { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::For { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Number { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Super { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Mut { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Match { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Open { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::LSelf { .. }),
+                ) => {
+                    state = 2usize;
+                    capture_val = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        60usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::MatchArrow { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingRule {
+                            span: start..start,
+                            context: "MatchItem",
+                            rule: "Value",
+                        }),
+                    );
+                    state = 3usize;
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (1usize, _) => {
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                    let mut end = start;
+                    loop {
+                        match ::lady_deirdre::lexis::TokenCursor::token(
+                            session,
+                            0,
+                        ) {
+                            ::std::option::Option::Some(RustToken::USelf { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Char { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Ref { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Loop { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::BracketOpen { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Add { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Less { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::If { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Sub { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::String { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::BraceOpen { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Refer { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Range { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Crate { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::DoubleColon { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Bang { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Ident { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::While { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::For { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Number { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Super { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Mut { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Match { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Open { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::LSelf { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(_) => {
+                                let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                                    session,
+                                );
+                                end = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                                    session,
+                                    0,
+                                );
+                            }
+                            ::std::option::Option::None => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Value"]),
+                                    }),
+                                );
+                                break 'outer;
+                            }
+                        }
+                        skip(session);
+                    }
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::MatchArrow { .. }),
+                ) => {
+                    state = 3usize;
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::NewLine { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Whitespace { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Comment { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        8usize,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::LSelf { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Char { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Ref { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Loop { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::BracketOpen { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Add { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Less { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::If { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Sub { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::String { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::BraceOpen { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Refer { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Range { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Crate { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::DoubleColon { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Bang { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Ident { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::While { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::For { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Number { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Super { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Mut { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Match { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::USelf { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Open { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Break { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        70usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Continue { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        68usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Label { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        92usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Let { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        48usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Return { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "MatchItem",
+                            token: "MatchArrow",
+                        }),
+                    );
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        18usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (2usize, _) => {
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                    let mut end = start;
+                    loop {
+                        match ::lady_deirdre::lexis::TokenCursor::token(
+                            session,
+                            0,
+                        ) {
+                            ::std::option::Option::Some(
+                                RustToken::MatchArrow { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchArrow"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<[&'static str; 0usize]>>::from([]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(_) => {
+                                let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                                    session,
+                                );
+                                end = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                                    session,
+                                    0,
+                                );
+                            }
+                            ::std::option::Option::None => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchArrow"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<[&'static str; 0usize]>>::from([]),
+                                    }),
+                                );
+                                break 'outer;
+                            }
+                        }
+                        skip(session);
+                    }
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::NewLine { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Whitespace { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Comment { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        8usize,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::LSelf { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Char { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Ref { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Loop { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::BracketOpen { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Add { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Less { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::If { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Sub { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::String { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::BraceOpen { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Refer { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Range { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Crate { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::DoubleColon { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Bang { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Ident { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::While { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::For { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Number { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Super { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Mut { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Match { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::USelf { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Open { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        13usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Break { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        70usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Continue { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        68usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Label { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        92usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Let { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        48usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Return { .. }),
+                ) => {
+                    state = 4usize;
+                    capture_ret = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        18usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (3usize, _) => {
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                    let mut end = start;
+                    loop {
+                        match ::lady_deirdre::lexis::TokenCursor::token(
+                            session,
+                            0,
+                        ) {
+                            ::std::option::Option::Some(RustToken::LSelf { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Char { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Ref { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Loop { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::BracketOpen { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Add { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Less { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::If { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Sub { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::String { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::BraceOpen { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Refer { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Range { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Crate { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::DoubleColon { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Bang { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Ident { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::While { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::For { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Number { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Super { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Mut { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Match { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::USelf { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Open { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Break { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Continue { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Label { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Let { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Return { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(_) => {
+                                let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                                    session,
+                                );
+                                end = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                                    session,
+                                    0,
+                                );
+                            }
+                            ::std::option::Option::None => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "MatchItem",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 6usize],
+                                        >>::from([
+                                            "Action",
+                                            "Break",
+                                            "Continue",
+                                            "Label",
+                                            "Let",
+                                            "Return",
+                                        ]),
+                                    }),
+                                );
+                                break 'outer;
+                            }
+                        }
+                        skip(session);
+                    }
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Comma { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                    break;
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::NewLine { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Whitespace { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Comment { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        8usize,
+                    );
+                }
+                (4usize, _) => {
+                    break;
+                }
+                _ => {
+                    ::core::panicking::panic_fmt(
+                        format_args!(
+                            "internal error: entered unreachable code: {0}",
+                            format_args!("Unknown state.")
+                        ),
+                    );
+                }
+            }
+        }
+        RustNode::MatchItem {
+            val: capture_val,
+            ret: capture_ret,
+        }
+    }
+    
+    
+    
+    fn parse_Match<'code>(
+        session: &mut impl ::lady_deirdre::syntax::SyntaxSession<
+            'code,
+            Node = RustNode,
+        >,
+    ) -> RustNode {
+        let mut state = 1usize;
+        let mut start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+            session,
+            0,
+        );
+        let mut capture_value = ::lady_deirdre::syntax::NodeRef::nil();
+        let mut capture_items = ::std::vec::Vec::<
+            ::lady_deirdre::syntax::NodeRef,
+        >::with_capacity(1);
+        'outer: loop {
+            match (
+                state,
+                ::lady_deirdre::lexis::TokenCursor::token(session, 0),
+            ) {
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Match { .. }),
+                ) => {
+                    state = 2usize;
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::USelf { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Char { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Ref { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Loop { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::BracketOpen { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Add { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Less { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::If { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Sub { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::String { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::BraceOpen { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Refer { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Crate { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::DoubleColon { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Bang { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Ident { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::While { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::LSelf { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::For { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Super { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Mut { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Open { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    1usize,
+                    ::std::option::Option::Some(RustToken::Number { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "Match",
+                        }),
+                    );
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (1usize, _) => {
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                    let mut end = start;
+                    loop {
+                        match ::lady_deirdre::lexis::TokenCursor::token(
+                            session,
+                            0,
+                        ) {
+                            ::std::option::Option::Some(RustToken::Match { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Match"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<[&'static str; 0usize]>>::from([]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::BraceClose { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                                    session,
+                                );
+                                end = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                                    session,
+                                    0,
+                                );
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Match"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<[&'static str; 0usize]>>::from([]),
+                                    }),
+                                );
+                                break 'outer;
+                            }
+                            ::std::option::Option::Some(_) => {
+                                let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                                    session,
+                                );
+                                end = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                                    session,
+                                    0,
+                                );
+                            }
+                            ::std::option::Option::None => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["Match"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<[&'static str; 0usize]>>::from([]),
+                                    }),
+                                );
+                                break 'outer;
+                            }
+                        }
+                        skip(session);
+                    }
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::USelf { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Char { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Ref { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Loop { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::BracketOpen { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Add { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Less { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::If { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Sub { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::String { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::BraceOpen { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Refer { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Crate { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::DoubleColon { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Bang { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Ident { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::While { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::LSelf { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::For { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Super { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Mut { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Open { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Match { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Number { .. }),
+                ) => {
+                    state = 3usize;
+                    capture_value = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        12usize,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::NewLine { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Whitespace { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                }
+                (
+                    2usize,
+                    ::std::option::Option::Some(RustToken::Comment { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        8usize,
+                    );
+                }
+                (2usize, _) => {
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                    let mut end = start;
+                    loop {
+                        match ::lady_deirdre::lexis::TokenCursor::token(
+                            session,
+                            0,
+                        ) {
+                            ::std::option::Option::Some(RustToken::USelf { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Char { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Ref { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Loop { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::BracketOpen { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Add { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Less { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::If { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Sub { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::String { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::BraceOpen { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Refer { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Crate { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::DoubleColon { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Bang { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Ident { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::While { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::LSelf { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::For { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Super { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Mut { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Open { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Match { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Number { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::BraceClose { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                                    session,
+                                );
+                                end = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                                    session,
+                                    0,
+                                );
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break 'outer;
+                            }
+                            ::std::option::Option::Some(_) => {
+                                let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                                    session,
+                                );
+                                end = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                                    session,
+                                    0,
+                                );
+                            }
+                            ::std::option::Option::None => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 0usize],
+                                        >>::from([]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["ValNoConstruct"]),
+                                    }),
+                                );
+                                break 'outer;
+                            }
+                        }
+                        skip(session);
+                    }
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::BraceOpen { .. }),
+                ) => {
+                    state = 4usize;
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::NewLine { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Whitespace { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Comment { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        8usize,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::BraceClose { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                    break;
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::LSelf { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Char { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Ref { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Loop { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::BracketOpen { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Add { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Less { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::If { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Sub { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::String { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Refer { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Range { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Crate { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::DoubleColon { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Bang { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Ident { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::While { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::For { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Number { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Super { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Mut { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Match { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::USelf { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    3usize,
+                    ::std::option::Option::Some(RustToken::Open { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        <SyntaxError as ::std::convert::From<
+                            ::lady_deirdre::syntax::SyntaxError,
+                        >>::from(::lady_deirdre::syntax::SyntaxError::MissingToken {
+                            span: start..start,
+                            context: "Match",
+                            token: "BraceOpen",
+                        }),
+                    );
+                    state = 4usize;
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (3usize, _) => {
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                    let mut end = start;
+                    loop {
+                        match ::lady_deirdre::lexis::TokenCursor::token(
+                            session,
+                            0,
+                        ) {
+                            ::std::option::Option::Some(
+                                RustToken::BraceOpen { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceOpen"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<[&'static str; 0usize]>>::from([]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::BraceClose { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                                    session,
+                                );
+                                end = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                                    session,
+                                    0,
+                                );
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceOpen"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<[&'static str; 0usize]>>::from([]),
+                                    }),
+                                );
+                                break 'outer;
+                            }
+                            ::std::option::Option::Some(_) => {
+                                let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                                    session,
+                                );
+                                end = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                                    session,
+                                    0,
+                                );
+                            }
+                            ::std::option::Option::None => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceOpen"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<[&'static str; 0usize]>>::from([]),
+                                    }),
+                                );
+                                break 'outer;
+                            }
+                        }
+                        skip(session);
+                    }
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::BraceClose { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                    break;
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::NewLine { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Whitespace { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                        session,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Comment { .. }),
+                ) => {
+                    let _ = ::lady_deirdre::syntax::SyntaxSession::descend(
+                        session,
+                        8usize,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::LSelf { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Char { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Ref { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Loop { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::BracketOpen { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Add { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Less { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::If { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Sub { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::String { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::BraceOpen { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Refer { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Range { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Crate { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::DoubleColon { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Bang { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Ident { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::While { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::For { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Number { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Super { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Mut { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Match { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::USelf { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (
+                    4usize,
+                    ::std::option::Option::Some(RustToken::Open { .. }),
+                ) => {
+                    ::std::vec::Vec::push(
+                        &mut capture_items,
+                        ::lady_deirdre::syntax::SyntaxSession::descend(
+                            session,
+                            10usize,
+                        ),
+                    );
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                }
+                (4usize, _) => {
+                    start = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                        session,
+                        0,
+                    );
+                    let mut end = start;
+                    loop {
+                        match ::lady_deirdre::lexis::TokenCursor::token(
+                            session,
+                            0,
+                        ) {
+                            ::std::option::Option::Some(
+                                RustToken::BraceClose { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::LSelf { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Char { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Ref { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Loop { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::BracketOpen { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Add { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Less { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::If { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Sub { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::String { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::BraceOpen { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Refer { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Range { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Crate { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::DoubleColon { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Bang { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Ident { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::While { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::For { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Number { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Super { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Mut { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Match { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::USelf { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(RustToken::Open { .. }) => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break;
+                            }
+                            ::std::option::Option::Some(
+                                RustToken::BraceClose { .. },
+                            ) => {
+                                let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                                    session,
+                                );
+                                end = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                                    session,
+                                    0,
+                                );
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break 'outer;
+                            }
+                            ::std::option::Option::Some(_) => {
+                                let _ = ::lady_deirdre::lexis::TokenCursor::advance(
+                                    session,
+                                );
+                                end = ::lady_deirdre::lexis::TokenCursor::site_ref(
+                                    session,
+                                    0,
+                                );
+                            }
+                            ::std::option::Option::None => {
+                                let _ = ::lady_deirdre::syntax::SyntaxSession::error(
+                                    session,
+                                    <SyntaxError as ::std::convert::From<
+                                        ::lady_deirdre::syntax::SyntaxError,
+                                    >>::from(::lady_deirdre::syntax::SyntaxError::Mismatch {
+                                        span: start..end,
+                                        context: "Match",
+                                        expected_tokens: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["BraceClose"]),
+                                        expected_rules: <::std::vec::Vec<
+                                            &'static str,
+                                        > as ::std::convert::From<
+                                            [&'static str; 1usize],
+                                        >>::from(["MatchItem"]),
+                                    }),
+                                );
+                                break 'outer;
+                            }
+                        }
+                        skip(session);
+                    }
+                }
+                _ => {
+                    ::core::panicking::panic_fmt(
+                        format_args!(
+                            "internal error: entered unreachable code: {0}",
+                            format_args!("Unknown state.")
+                        ),
+                    );
+                }
+            }
+        }
+        RustNode::Match {
+            value: capture_value,
+            items: capture_items,
+        }
+    }
+}
+*/
+// $Match & (value: ValNoConstruct) & $BraceOpen & (items: MatchItem)* & $BraceClose

@@ -20,17 +20,17 @@
 pub mod lexis;
 pub mod syntax;
 
-use std::{fs, thread};
+use std::{fs, thread, println};
 
 use lady_deirdre::{
-    lexis::{CodeContent, SourceCode, ToSpan, TokenBuffer},
-    syntax::{Node, SyntaxTree},
+    lexis::{SourceCode, ToSpan, TokenBuffer, CodeContent},
+    syntax::{Node, TreeContent},
 };
 
 pub fn main() {
-    let handle = thread::Builder::new()
-        .stack_size(1024 * 1024 * 1024 * 10)
-        .spawn(|| {
+    // let handle = thread::Builder::new()
+    //     .stack_size(1024 * 1024 * 1024 * 10)
+    //     .spawn(|| {
             let code = TokenBuffer::<lexis::RustToken>::from(
                 fs::read_to_string(
                     "txt.rs",
@@ -43,21 +43,17 @@ pub fn main() {
             println!("lexis");
 
             let tree = syntax::RustNode::parse(code.cursor(..));
+            println!("{}", code.chunks(..)
+                     .map(|ch| ch.token.to_string())
+                     .collect::<Vec<_>>()
+                     .join("|"));
             println!("syntax");
-
-            println!(
-                "{}",
-                code.chunks(..)
-                    .map(|chunk| chunk.token.to_string())
-                    .collect::<Vec<_>>()
-                    .join("|")
-            );
 
             for error in tree.errors() {
                 println!("{}: {}", error.span().format(&code), error);
             }
-        })
-        .unwrap();
+    //     })
+    //     .unwrap();
 
-    handle.join().unwrap();
+    // handle.join().unwrap();
 }
