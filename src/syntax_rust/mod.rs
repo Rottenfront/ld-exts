@@ -33,7 +33,7 @@ pub fn main() {
     //     .spawn(|| {
             let code = TokenBuffer::<lexis::RustToken>::from(
                 fs::read_to_string(
-                    "txt.rs",
+                    "test.rs",
                 )
                 .expect("Should have been able to read the file"),
                 // fs::read_to_string("src/syntax_rust/mod.rs")

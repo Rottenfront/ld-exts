@@ -19,34 +19,33 @@
 
 // pub mod formatter;
 pub mod lexis;
-pub mod syntax;
-
-use lady_deirdre::lexis::{CodeContent, SourceCode, ToSpan, TokenBuffer};
-use lady_deirdre::syntax::Node;
-// use lady_deirdre::syntax::SyntaxTree;
-
+// pub mod syntax;
+/*
+use lady_deirdre::{
+    lexis::{CodeContent, Token},
+    syntax::TreeContent,
+    Document,
+};
+*/
 use std::fs;
 
 pub fn main() {
-    let code = TokenBuffer::<lexis::CppToken>::from(
-        fs::read_to_string("txt.c").expect("Should have been able to read the file"),
+    /*
+    let tree = Document::<syntax::CppNode>::from(
+        fs::read_to_string("test.cpp")
+        .expect("Should have been able to read the file"),
     );
 
-    let tree = syntax::CppNode::parse(code.cursor(..));
-
     println!(
-        "{}",
+        "{}\n{}",
+        tree.chunks(..)
+            .map(|ch| lexis::CppToken::describe(ch.token as u8).unwrap())
+            .collect::<Vec<_>>()
+            .join("|"),
         tree.errors()
-            .map(|error| format!("{}: {}", error.span().format(&code), error))
+            .map(|error| error.display(&tree).to_string())
             .collect::<Vec<_>>()
             .join("\n")
     );
-
-    println!(
-        "{}",
-        code.chunks(..)
-            .map(|chunk| format_args!("{:?}", chunk.token))
-            .collect::<Vec<_>>()
-            .join("|")
-    )
+    */
 }

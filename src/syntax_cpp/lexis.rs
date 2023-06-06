@@ -17,10 +17,10 @@
  * SOFTWARE.
  */
 
-use core::fmt::Display;
 use lady_deirdre::lexis::Token;
 
-#[derive(Clone, Copy, Debug, Token)]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Token, Eq, PartialEq)]
 pub enum CppToken {
     #[precedence(2)]
     #[rule("auto")]
@@ -158,6 +158,9 @@ pub enum CppToken {
     #[rule("typedef")]
     Typedef,
     #[precedence(2)]
+    #[rule("typename")]
+    Typename,
+    #[precedence(2)]
     #[rule("union")]
     Union,
     #[precedence(2)]
@@ -193,10 +196,10 @@ pub enum CppToken {
     // BRACKETS
     #[precedence(3)]
     #[rule('(')]
-    ParenthesisOpen,
+    Open,
     #[precedence(3)]
     #[rule(')')]
-    ParenthesisClose,
+    Close,
     #[precedence(3)]
     #[rule('{')]
     BraceOpen,
@@ -275,7 +278,7 @@ pub enum CppToken {
     '\t', '\r', '\x0b', '\x0c', '\n']
     & ^['!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '-', '+', '=', '[', ']', '{',
     '}', '\\', '|', '\'', '"', ';', ':', '/', '?', ',', '.', '<', '>', '`', '~', ' ', '\t', '\r',
-    '\x0b', '\x0c', '\n']*)]
+    '\x0b', '\x0c', '\n']* /* ['A'..'Z', 'a'..'z', '_']+*/)]
     Ident,
 
     #[rule('~')]
@@ -289,69 +292,4 @@ pub enum CppToken {
     #[mismatch]
     Mismatch,
 }
-/*
-impl Display for CppToken {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match *self {
-            Self::Auto => "auto",
-            Self::Const => "const",
-            Self::Extern => "extern",
-            Self::Register => "register",
-            Self::Static => "static",
-            Self::Volatile => "volatile",
-            Self::For => "for",
-            Self::Do => "do",
-            Self::While => "while",
-            Self::Switch => "switch",
-            Self::Case => "case",
-            Self::Default => "default",
-            Self::If => "if",
-            Self::Else => "else",
-            Self::Break => "break",
-            Self::Continue => "continue",
-            Self::Goto => "goto",
-            Self::Return => "return",
-            Self::Enum => "enum",
-            Self::Struct => "struct",
-            Self::Typedef => "typedef",
-            Self::Union => "Union",
-            Self::TypeMod => "MOD",
-            Self::BasicType => "TYPE",
-            Self::BinNumber | Self::DecNumber | Self::HexNumber | Self::OctNumber => "NUM",
-            Self::Whitespace => " ",
-            Self::NewLine => "\n",
-            Self::ParenthesisOpen => "(",
-            Self::ParenthesisClose => ")",
-            Self::BraceOpen => "{",
-            Self::BraceClose => "}",
-            Self::BracketOpen => "[",
-            Self::BracketClose => "]",
-            Self::Comma => ",",
-            Self::Point => ".",
-            Self::Char => "CHAR",
-            Self::Colon => ":",
-            Self::Semicolon => ";",
-            Self::UnOp => "-",
-            Self::BinOp => "+",
-            Self::BoolOp1 => "==",
-            Self::BoolOp2 => ">",
-            Self::LogicOp => "&&",
-            Self::IncDec => "++",
-            Self::Set => "=",
-            Self::Star => "*",
-            Self::Backslash => "\\",
-            Self::QuestMark => "?",
-            Self::Hash => "#",
-            Self::SetOp => "+=",
-            Self::SingleComment => "//",
-            Self::MultilineCommentOpen => "/*",
-            Self::MultilineCommentClose => "*/",
-            Self::Ident => "IDENT",
-            Self::String => "STR",
-            Self::Other => "OTHER",
-            Self::Mismatch => "MISS",
-        }
-        .fmt(f)
-    }
-}
-*/
+

@@ -27,16 +27,32 @@ use std::vec::Vec;
 #[derive(Node, Debug, Clone)]
 #[token(CppToken)]
 #[error(SyntaxError)]
-#[skip($Whitespace)]
+#[trivia($Whitespace | Comment)]
 #[define(NUMBER = ($DecNumber | $HexNumber | $BinNumber | $OctNumber))]
 #[define(ACTION = (CodeBlock))]
 pub enum CppNode {
+    #[rule(val: $Comment)]
+    Comment { val: TokenRef },
+
     #[root]
     #[rule(items: RootItem*)]
     Root { items: Vec<NodeRef> },
 
-    #[rule(($Extern & (lang: $String))? & (item: (BasicDef | StructDef | EnumDef | ClassDef | NamespaceDef)))]
-    RootItem { lang: TokenRef, item: NodeRef },
+    #[rule(($Extern & (lang: $String))? & (template: TemplateDef)? &
+    (item: (BasicDef | StructDef | EnumDef | ClassDef | NamespaceDef)))]
+    RootItem { lang: TokenRef, template: NodeRef, item: NodeRef },
+
+    #[rule($Template & $Less & (types: TemplateType)*{$Comma} & $Comma? & $Greater)]
+    TemplateDef {
+        types: Vec<NodeRef>,
+    },
+
+    #[rule((type_: ($Typename | $Class)) & (name: $Ident) & (recursive: $Point)*)]
+    TemplateType {
+        type_: TokenRef,
+        name: TokenRef,
+        recursive: Vec<TokenRef>,
+    },
     
     #[rule(((mods: $TypeMod)+ & (type_: $BasicType)?) | (type_: $BasicType))]
     BasicType {
@@ -44,12 +60,15 @@ pub enum CppNode {
         type_: TokenRef,
     },
 
-    #[rule((((mods: ($Const | $Auto | $Static | $Volatile)) & (type_: (BasicValue | Path))?)
-    | (type_: (BasicType | Path))) & (generic: GenericUse)? & (refer: ($Amp | $Star)*))]
+    #[rule((((mods: ($Const | $Auto | $Static | $Volatile)+) & (type_: (BasicValue | Path))?)
+    | (type_: (BasicType | Path))) & (generic: GenericUse)? & (recursive: $Point*)
+    & (refer: ($Amp | $Star)*))]
     Type {
-        auto: TokenRef,
+        mods: Vec<TokenRef>,
         type_: NodeRef,
-        refer: Vec<NodeRef>,
+        refer: Vec<TokenRef>,
+        generic: NodeRef,
+        recursive: Vec<TokenRef>,
     },
 
     #[rule((path: $Ident)+{$DColon})]
@@ -70,10 +89,11 @@ pub enum CppNode {
     #[rule($BracketOpen & (val: Value)? & $BracketClose)]
     ArrIndex { val: NodeRef },
 
-    #[rule((arr: ArrIndex)? & ($Set & (val: Value))? & $Semicolon)]
+    #[rule((arr: ArrIndex)? & ($Set & (val: Value))? & ($Comma & (nexts: StructVar))* & $Semicolon)]
     VarDef {
         arr: NodeRef,
-        value: NodeRef,
+        val: NodeRef,
+        nexts: Vec<NodeRef>,
     },
 
     #[rule($Open & (params: FnParameter)*{$Comma} & $Close & (defs: BasicDef)*
@@ -92,17 +112,21 @@ pub enum CppNode {
         type_: NodeRef,
     },
 
-    #[rule($Struct & (name: Path) & $BraceOpen & (fields: RootItem)* & $BraceClose & $Semicolon)]
+    #[rule($Struct & (name: Path) & $BraceOpen & (fields: RootItem)* & $BraceClose
+           & (defs: StructVar)*{$Comma} & $Semicolon)]
     StructDef {
         name: NodeRef,
         fields: Vec<NodeRef>,
+        defs: Vec<NodeRef>,
     },
-/*
-    #[rule((name: $Ident) & )]
+
+    #[rule((name: Path) & (add: ArrIndex)? & ($Set & (val: Value))?)]
     StructVar {
-        
+        name: NodeRef,
+        val: NodeRef,
+        add: NodeRef,
     },
-*/
+
     #[rule($Enum & (name: Path) & $BraceOpen & (items: EnumItem)*{$Comma} & $Comma? & $BraceClose)]
     EnumDef {
         name: NodeRef,
@@ -142,7 +166,7 @@ pub enum CppNode {
         add: TokenRef,
     },
 
-    #[rule((values: SingleValue)*{ops: BinOp})]
+    #[rule((values: SingleValue)+{ops: BinOp})]
     Value {
         values: Vec<NodeRef>,
         ops: Vec<NodeRef>,
@@ -180,9 +204,10 @@ pub enum CppNode {
     #[rule($Open & (val: Value) & $Close)]
     ValueParenthesis { val: NodeRef },
 }
-
+/*
 impl CppNode {
     fn parse_action<'code>(session: &mut impl SyntaxSession<'code, Node = Self>) -> Self {
         unimplemented!()
     }
 }
+*/
