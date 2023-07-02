@@ -9,9 +9,12 @@ Parsers based on lady-deirdre project
 
 ## Parsers
 
-| Language   | Progress | Highlighter |
-|------------|----------|-------------|
-| JSON       | Done     | No          |
-| XML        | Working  | No          |
-| Rust       | Working  | No          |
-| C/C++      | Working  | No          |
+| Language   | Progress |
+|------------|----------|
+| JSON       | Done     |
+|------------|----------|
+| Rust       | Working  |
+|------------|----------|
+| C          | Working  |
+|------------|----------|
+| C++        | No       |

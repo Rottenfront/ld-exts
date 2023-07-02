@@ -6,9 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# lady-deirdre = { git = "https://github.com/eliah-lakhin/lady-deirdre", branch = "version-2" }
-lady-deirdre = { git = "https://github.com/eliah-lakhin/lady-deirdre", branch = "master" }
+lady-deirdre = { git = "https://github.com/eliah-lakhin/lady-deirdre", branch = "version-2" }
+# lady-deirdre = { git = "https://github.com/eliah-lakhin/lady-deirdre", branch = "master" }
 # lady-deirdre = { path = "./ld" }
 
 [dev-dependencies]
-criterion = "0.4.0"
+# criterion = "0.4.0"
