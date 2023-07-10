@@ -33,7 +33,7 @@
 
 use super::lexis::CToken;
 use lady_deirdre::{
-    lexis::{SiteRef, TokenRef, TokenSet},
+    lexis::{SiteRef, TokenRef, TokenSet, Token},
     syntax::{Node, NodeRef, RuleSet, SyntaxError, SyntaxSession},
 };
 
@@ -45,6 +45,7 @@ const FOR_RULE: u16 = 14;
 const DO_WHILE_RULE: u16 = 15;
 const BASIC_TYPE_RULE: u16 = 30;
 
+// #[dump(trivia)]
 #[derive(Node, Debug, Clone)]
 #[token(CToken)]
 #[error(SyntaxError)]
@@ -502,112 +503,178 @@ impl CNode {
             }
         }
     }
-    fn parse_definition<'code>(session: &mut impl SyntaxSession<'code, Node = CNode>) -> CNode {
-        static RULES_1: RuleSet = RuleSet::new(&[32u16]);
-        static RULES_2: RuleSet = RuleSet::new(&[36u16, 38u16]);
-        static RULES_3: RuleSet = RuleSet::new(&[4u16]);
-        static RULES_4: RuleSet = RuleSet::new(&[4u16, 31u16]);
-        static TOKENS_1: TokenSet = TokenSet::inclusive(&[CToken::PClose as u8]);
-        static TOKENS_2: TokenSet =
-            TokenSet::inclusive(&[CToken::Ident as u8, CToken::POpen as u8, CToken::Star as u8]);
-        static TOKENS_3: TokenSet = TokenSet::inclusive(&[
-            CToken::BasicType as u8,
-            CToken::BasicTypeMod as u8,
-            CToken::Enum as u8,
-            CToken::Ident as u8,
-            CToken::Struct as u8,
-            CToken::Union as u8,
-        ]);
-        static TOKENS_4: TokenSet =
-            TokenSet::inclusive(&[CToken::Comma as u8, CToken::PClose as u8]);
-        static TOKENS_5: TokenSet = TokenSet::inclusive(&[
-            CToken::BasicType as u8,
-            CToken::BasicTypeMod as u8,
-            CToken::Ident as u8,
-        ]);
-        static TOKENS_6: TokenSet = TokenSet::inclusive(&[
-            CToken::BasicType as u8,
-            CToken::BasicTypeMod as u8,
-            CToken::Enum as u8,
-            CToken::Ident as u8,
-        ]);
-        static TOKENS_7: TokenSet = TokenSet::inclusive(&[CToken::Ident as u8]);
-        static TOKENS_8: TokenSet = TokenSet::inclusive(&[CToken::POpen as u8]);
-        static TOKENS_9: TokenSet = TokenSet::inclusive(&[
-            CToken::BasicType as u8,
-            CToken::BasicTypeMod as u8,
-            CToken::Enum as u8,
-            CToken::Ident as u8,
-            CToken::PClose as u8,
-            CToken::Struct as u8,
-            CToken::Union as u8,
-        ]);
-        static TOKENS_10: TokenSet = TokenSet::inclusive(&[
-            CToken::BkOpen as u8,
-            CToken::Comma as u8,
-            CToken::Semicolon as u8,
-            CToken::SetOp as u8,
-        ]);
-        static TOKENS_11: TokenSet = TokenSet::inclusive(&[CToken::Star as u8]);
-        static TOKENS_12: TokenSet = TokenSet::inclusive(&[
-            CToken::BkOpen as u8,
-            CToken::Comma as u8,
-            CToken::POpen as u8,
-            CToken::Semicolon as u8,
-            CToken::SetOp as u8,
-        ]);
+    fn skip_trivia<'code>(
+        session: &mut impl ::lady_deirdre::syntax::SyntaxSession<'code, Node = CNode>,
+    ) {
+        static TOKENS_1: ::lady_deirdre::lexis::TokenSet = ::lady_deirdre::lexis::TokenSet::inclusive(
+            &[
+                CToken::Comment as u8,
+                CToken::ElseDirective as u8,
+                CToken::ElseIfDefDirective as u8,
+                CToken::ElseIfDirective as u8,
+                CToken::ElseIfNotDefDirective as u8,
+                CToken::EndIfDirective as u8,
+                CToken::ErrorDirective as u8,
+                CToken::IfDefDirective as u8,
+                CToken::IfDirective as u8,
+                CToken::IfNotDefDirective as u8,
+                CToken::LineDirective as u8,
+                CToken::MlComment as u8,
+                CToken::NewLine as u8,
+                CToken::PragmaDirective as u8,
+                CToken::Unreachable as u8,
+                CToken::WarnDirective as u8,
+                CToken::Whitespace as u8,
+            ],
+        );
+        loop {
+            let token = session.token(0);
+            if token == CToken::eoi() {
+                break;
+            }
+            if TOKENS_1.contains(token as u8) {
+                session.advance();
+                continue;
+            }
+            if token == CToken::MacroName {
+                session.descend(1u16); // MacroUse
+                continue;
+            }
+            break;
+        }
+    }
+    fn parse_definition<'code>(
+        session: &mut impl ::lady_deirdre::syntax::SyntaxSession<'code, Node = CNode>,
+    ) -> CNode {
+        static RULES_1: ::lady_deirdre::syntax::RuleSet = ::lady_deirdre::syntax::RuleSet::new(
+            &[41u16],
+        );
+        static RULES_2: ::lady_deirdre::syntax::RuleSet = ::lady_deirdre::syntax::RuleSet::new(
+            &[36u16, 38u16],
+        );
+        static RULES_3: ::lady_deirdre::syntax::RuleSet = ::lady_deirdre::syntax::RuleSet::new(
+            &[4u16],
+        );
+        static RULES_4: ::lady_deirdre::syntax::RuleSet = ::lady_deirdre::syntax::RuleSet::new(
+            &[4u16, 40u16],
+        );
+        static TOKENS_1: ::lady_deirdre::lexis::TokenSet = ::lady_deirdre::lexis::TokenSet::inclusive(
+            &[CToken::PClose as u8],
+        );
+        static TOKENS_2: ::lady_deirdre::lexis::TokenSet = ::lady_deirdre::lexis::TokenSet::inclusive(
+            &[CToken::Ident as u8, CToken::POpen as u8, CToken::Star as u8],
+        );
+        static TOKENS_3: ::lady_deirdre::lexis::TokenSet = ::lady_deirdre::lexis::TokenSet::inclusive(
+            &[
+                CToken::BasicType as u8,
+                CToken::BasicTypeMod as u8,
+                CToken::Enum as u8,
+                CToken::Ident as u8,
+                CToken::Struct as u8,
+                CToken::Union as u8,
+            ],
+        );
+        static TOKENS_4: ::lady_deirdre::lexis::TokenSet = ::lady_deirdre::lexis::TokenSet::inclusive(
+            &[CToken::Comma as u8, CToken::PClose as u8],
+        );
+        static TOKENS_5: ::lady_deirdre::lexis::TokenSet = ::lady_deirdre::lexis::TokenSet::inclusive(
+            &[CToken::BasicType as u8, CToken::BasicTypeMod as u8, CToken::Ident as u8],
+        );
+        static TOKENS_6: ::lady_deirdre::lexis::TokenSet = ::lady_deirdre::lexis::TokenSet::inclusive(
+            &[
+                CToken::BasicType as u8,
+                CToken::BasicTypeMod as u8,
+                CToken::Enum as u8,
+                CToken::Ident as u8,
+            ],
+        );
+        static TOKENS_7: ::lady_deirdre::lexis::TokenSet = ::lady_deirdre::lexis::TokenSet::inclusive(
+            &[CToken::Ident as u8],
+        );
+        static TOKENS_8: ::lady_deirdre::lexis::TokenSet = ::lady_deirdre::lexis::TokenSet::inclusive(
+            &[CToken::POpen as u8],
+        );
+        static TOKENS_9: ::lady_deirdre::lexis::TokenSet = ::lady_deirdre::lexis::TokenSet::inclusive(
+            &[
+                CToken::BasicType as u8,
+                CToken::BasicTypeMod as u8,
+                CToken::Enum as u8,
+                CToken::Ident as u8,
+                CToken::PClose as u8,
+                CToken::Struct as u8,
+                CToken::Union as u8,
+            ],
+        );
+        static TOKENS_10: ::lady_deirdre::lexis::TokenSet = ::lady_deirdre::lexis::TokenSet::inclusive(
+            &[
+                CToken::BkOpen as u8,
+                CToken::Comma as u8,
+                CToken::Semicolon as u8,
+                CToken::SetOp as u8,
+            ],
+        );
+        static TOKENS_11: ::lady_deirdre::lexis::TokenSet = ::lady_deirdre::lexis::TokenSet::inclusive(
+            &[CToken::Star as u8],
+        );
+        static TOKENS_12: ::lady_deirdre::lexis::TokenSet = ::lady_deirdre::lexis::TokenSet::inclusive(
+            &[
+                CToken::BkOpen as u8,
+                CToken::Comma as u8,
+                CToken::POpen as u8,
+                CToken::Semicolon as u8,
+                CToken::SetOp as u8,
+            ],
+        );
         let mut state = 1usize;
         let mut site;
         let mut first = true;
-        let mut capture_name = TokenRef::nil();
-        let mut capture_args = Vec::<NodeRef>::with_capacity(1);
-        let mut capture_next = NodeRef::nil();
-        let mut capture_ptr = Vec::<TokenRef>::with_capacity(1);
-        let mut capture_type_ = NodeRef::nil();
-        let mut capture_func = TokenRef::nil();
+        let mut capture_name = ::lady_deirdre::lexis::TokenRef::nil();
+        let mut capture_args = ::std::vec::Vec::<
+            ::lady_deirdre::syntax::NodeRef,
+        >::with_capacity(1);
+        let mut capture_next = ::lady_deirdre::syntax::NodeRef::nil();
+        let mut capture_ptr = ::std::vec::Vec::<
+            ::lady_deirdre::lexis::TokenRef,
+        >::with_capacity(1);
+        let mut capture_type_ = ::lady_deirdre::syntax::NodeRef::nil();
+        let mut capture_func = ::lady_deirdre::lexis::TokenRef::nil();
         loop {
             match first {
                 true => first = false,
-                false => {
-                    let mut token;
-                    loop {
-                        token = session.token(0);
-                        if token == CToken::EOI
-                            || token == CToken::Whitespace
-                            || token == CToken::NewLine
-                        {
-                            break;
-                        }
-                    }
-                }
+                false => Self::skip_trivia(session),
             }
             match state {
                 1usize => {
                     let token = session.token(0);
-                    if TokenSet::contains(&TOKENS_5, token as u8) {
-                        capture_type_ =
-                            session.descend(36);
-                        state = 2;
+                    if TOKENS_5.contains(token as u8) {
+                        capture_type_ = session.descend(
+                            // BasicType
+                            36u16,
+                        );
+                        state = 2usize;
                         continue;
                     }
                     if token == CToken::Enum {
-                        capture_type_ =
-                            session.descend(38);
+                        capture_type_ = session.descend(
+                            // EnumType
+                            38u16,
+                        );
                         state = 2usize;
                         continue;
                     }
                     site = session.site_ref(0);
-                    let recovered = lady_deirdre::syntax::Recovery::recover(
-                        &lady_deirdre::syntax::UNLIMITED_RECOVERY,
+                    let recovered = ::lady_deirdre::syntax::Recovery::recover(
+                        &::lady_deirdre::syntax::UNLIMITED_RECOVERY,
                         session,
                         &TOKENS_6,
                     );
                     let end_site = session.site_ref(0);
-                    session.error(
-                        SyntaxError {
+                    ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        ::lady_deirdre::syntax::SyntaxError {
                             span: site..end_site,
-                            context: 3,
-                            expected_tokens: &lady_deirdre::lexis::EMPTY_TOKEN_SET,
+                            context: 3u16,
+                            expected_tokens: &::lady_deirdre::lexis::EMPTY_TOKEN_SET,
                             expected_rules: &RULES_2,
                         },
                     );
@@ -618,28 +685,34 @@ impl CNode {
                 2usize => {
                     let token = session.token(0);
                     if token == CToken::Star {
-                        capture_ptr.push(session.token_ref(0));
+                        ::std::vec::Vec::push(
+                            &mut capture_ptr,
+                            ::lady_deirdre::lexis::TokenCursor::token_ref(session, 0),
+                        );
                         session.advance();
                         continue;
                     }
                     if token == CToken::Ident {
-                        capture_name = session.token_ref(0);
+                        capture_name = ::lady_deirdre::lexis::TokenCursor::token_ref(
+                            session,
+                            0,
+                        );
                         session.advance();
                         state = 11usize;
                         continue;
                     }
                     if token == CToken::POpen {
-                        ::lady_deirdre::lexis::TokenCursor::advance(session);
+                        session.advance();
                         state = 12usize;
                         continue;
                     }
-                    site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
-                    let mut recovered = ::lady_deirdre::syntax::Recovery::recover(
+                    site = session.site_ref(0);
+                    let recovered = ::lady_deirdre::syntax::Recovery::recover(
                         &::lady_deirdre::syntax::UNLIMITED_RECOVERY,
                         session,
                         &TOKENS_2,
                     );
-                    let end_site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
+                    let end_site = session.site_ref(0);
                     ::lady_deirdre::syntax::SyntaxSession::error(
                         session,
                         ::lady_deirdre::syntax::SyntaxError {
@@ -654,15 +727,18 @@ impl CNode {
                     }
                 }
                 3usize => {
-                    let token = ::lady_deirdre::lexis::TokenCursor::token(session, 0);
+                    let token = session.token(0);
                     if token == CToken::Ident {
-                        capture_name = ::lady_deirdre::lexis::TokenCursor::token_ref(session, 0);
-                        ::lady_deirdre::lexis::TokenCursor::advance(session);
+                        capture_name = ::lady_deirdre::lexis::TokenCursor::token_ref(
+                            session,
+                            0,
+                        );
+                        session.advance();
                         state = 4usize;
                         continue;
                     }
                     if token == CToken::PClose {
-                        site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
+                        site = session.site_ref(0);
                         ::lady_deirdre::syntax::SyntaxSession::error(
                             session,
                             ::lady_deirdre::syntax::SyntaxError {
@@ -672,17 +748,17 @@ impl CNode {
                                 expected_rules: &::lady_deirdre::syntax::EMPTY_RULE_SET,
                             },
                         );
-                        ::lady_deirdre::lexis::TokenCursor::advance(session);
+                        session.advance();
                         state = 8usize;
                         continue;
                     }
-                    site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
-                    let mut recovered = ::lady_deirdre::syntax::Recovery::recover(
+                    site = session.site_ref(0);
+                    let recovered = ::lady_deirdre::syntax::Recovery::recover(
                         &::lady_deirdre::syntax::UNLIMITED_RECOVERY,
                         session,
                         &TOKENS_7,
                     );
-                    let end_site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
+                    let end_site = session.site_ref(0);
                     ::lady_deirdre::syntax::SyntaxSession::error(
                         session,
                         ::lady_deirdre::syntax::SyntaxError {
@@ -697,9 +773,9 @@ impl CNode {
                     }
                 }
                 4usize => {
-                    let token = ::lady_deirdre::lexis::TokenCursor::token(session, 0);
+                    let token = session.token(0);
                     if token == CToken::POpen {
-                        site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
+                        site = session.site_ref(0);
                         ::lady_deirdre::syntax::SyntaxSession::error(
                             session,
                             ::lady_deirdre::syntax::SyntaxError {
@@ -709,22 +785,22 @@ impl CNode {
                                 expected_rules: &::lady_deirdre::syntax::EMPTY_RULE_SET,
                             },
                         );
-                        ::lady_deirdre::lexis::TokenCursor::advance(session);
+                        session.advance();
                         state = 5usize;
                         continue;
                     }
                     if token == CToken::PClose {
-                        ::lady_deirdre::lexis::TokenCursor::advance(session);
+                        session.advance();
                         state = 8usize;
                         continue;
                     }
-                    site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
-                    let mut recovered = ::lady_deirdre::syntax::Recovery::recover(
+                    site = session.site_ref(0);
+                    let recovered = ::lady_deirdre::syntax::Recovery::recover(
                         &::lady_deirdre::syntax::UNLIMITED_RECOVERY,
                         session,
                         &TOKENS_1,
                     );
-                    let end_site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
+                    let end_site = session.site_ref(0);
                     ::lady_deirdre::syntax::SyntaxSession::error(
                         session,
                         ::lady_deirdre::syntax::SyntaxError {
@@ -739,27 +815,24 @@ impl CNode {
                     }
                 }
                 5usize => {
-                    let token = ::lady_deirdre::lexis::TokenCursor::token(session, 0);
-                    if TokenSet::contains(&TOKENS_3, token as u8) {
-                        ::std::vec::Vec::push(
-                            &mut capture_args,
-                            ::lady_deirdre::syntax::SyntaxSession::descend(session, 32u16),
-                        );
+                    let token = session.token(0);
+                    if TOKENS_3.contains(token as u8) {
+                        capture_args.push(session.descend(41u16)); // FuncArg
                         state = 6usize;
                         continue;
                     }
                     if token == CToken::PClose {
-                        ::lady_deirdre::lexis::TokenCursor::advance(session);
-                        state = 7usize;
+                        session.advance();
+                        state = 7;
                         continue;
                     }
-                    site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
-                    let mut recovered = ::lady_deirdre::syntax::Recovery::recover(
+                    site = session.site_ref(0);
+                    let recovered = ::lady_deirdre::syntax::Recovery::recover(
                         &::lady_deirdre::syntax::UNLIMITED_RECOVERY,
                         session,
                         &TOKENS_9,
                     );
-                    let end_site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
+                    let end_site = session.site_ref(0);
                     ::lady_deirdre::syntax::SyntaxSession::error(
                         session,
                         ::lady_deirdre::syntax::SyntaxError {
@@ -774,24 +847,24 @@ impl CNode {
                     }
                 }
                 6usize => {
-                    let token = ::lady_deirdre::lexis::TokenCursor::token(session, 0);
+                    let token = session.token(0);
                     if token == CToken::PClose {
-                        ::lady_deirdre::lexis::TokenCursor::advance(session);
+                        session.advance();
                         state = 7usize;
                         continue;
                     }
                     if token == CToken::Comma {
-                        ::lady_deirdre::lexis::TokenCursor::advance(session);
+                        session.advance();
                         state = 10usize;
                         continue;
                     }
-                    site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
-                    let mut recovered = ::lady_deirdre::syntax::Recovery::recover(
+                    site = session.site_ref(0);
+                    let recovered = ::lady_deirdre::syntax::Recovery::recover(
                         &::lady_deirdre::syntax::UNLIMITED_RECOVERY,
                         session,
                         &TOKENS_4,
                     );
-                    let end_site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
+                    let end_site = session.site_ref(0);
                     ::lady_deirdre::syntax::SyntaxSession::error(
                         session,
                         ::lady_deirdre::syntax::SyntaxError {
@@ -806,19 +879,22 @@ impl CNode {
                     }
                 }
                 7usize => {
-                    let token = ::lady_deirdre::lexis::TokenCursor::token(session, 0);
-                    if TokenSet::contains(&TOKENS_10, token as u8) {
-                        capture_next =
-                            ::lady_deirdre::syntax::SyntaxSession::descend(session, 4u16);
+                    let token = session.token(0);
+                    if TOKENS_10.contains(token as u8) {
+                        capture_next = session.descend(
+                            
+                            // DefinitionValue
+                            4u16,
+                        );
                         break;
                     }
-                    site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
-                    let mut recovered = ::lady_deirdre::syntax::Recovery::recover(
+                    site = session.site_ref(0);
+                    let recovered = ::lady_deirdre::syntax::Recovery::recover(
                         &::lady_deirdre::syntax::UNLIMITED_RECOVERY,
                         session,
                         &TOKENS_10,
                     );
-                    let end_site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
+                    let end_site = session.site_ref(0);
                     ::lady_deirdre::syntax::SyntaxSession::error(
                         session,
                         ::lady_deirdre::syntax::SyntaxError {
@@ -833,14 +909,14 @@ impl CNode {
                     }
                 }
                 8usize => {
-                    let token = ::lady_deirdre::lexis::TokenCursor::token(session, 0);
+                    let token = session.token(0);
                     if token == CToken::POpen {
-                        ::lady_deirdre::lexis::TokenCursor::advance(session);
+                        session.advance();
                         state = 5usize;
                         continue;
                     }
-                    if TokenSet::contains(&TOKENS_3, token as u8) {
-                        site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
+                    if TOKENS_3.contains(token as u8) {
+                        site = session.site_ref(0);
                         ::lady_deirdre::syntax::SyntaxSession::error(
                             session,
                             ::lady_deirdre::syntax::SyntaxError {
@@ -852,33 +928,35 @@ impl CNode {
                         );
                         ::std::vec::Vec::push(
                             &mut capture_args,
-                            ::lady_deirdre::syntax::SyntaxSession::descend(session, 32u16),
+                            session.descend(
+                                // FuncArg
+                                41u16,
+                            ),
                         );
                         state = 6usize;
                         continue;
                     }
                     if token == CToken::PClose {
-                        site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
-                        ::lady_deirdre::syntax::SyntaxSession::error(
-                            session,
-                            ::lady_deirdre::syntax::SyntaxError {
+                        site = session.site_ref(0);
+                        session.error(
+                            SyntaxError {
                                 span: site..site,
                                 context: 3u16,
                                 expected_tokens: &TOKENS_8,
                                 expected_rules: &::lady_deirdre::syntax::EMPTY_RULE_SET,
                             },
                         );
-                        ::lady_deirdre::lexis::TokenCursor::advance(session);
+                        session.advance();
                         state = 7usize;
                         continue;
                     }
-                    site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
-                    let mut recovered = ::lady_deirdre::syntax::Recovery::recover(
+                    site = session.site_ref(0);
+                    let recovered = ::lady_deirdre::syntax::Recovery::recover(
                         &::lady_deirdre::syntax::UNLIMITED_RECOVERY,
                         session,
                         &TOKENS_8,
                     );
-                    let end_site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
+                    let end_site = session.site_ref(0);
                     ::lady_deirdre::syntax::SyntaxSession::error(
                         session,
                         ::lady_deirdre::syntax::SyntaxError {
@@ -893,11 +971,14 @@ impl CNode {
                     }
                 }
                 10usize => {
-                    let token = ::lady_deirdre::lexis::TokenCursor::token(session, 0);
-                    if TokenSet::contains(&TOKENS_3, token as u8) {
+                    let token = session.token(0);
+                    if TOKENS_3.contains(token as u8) {
                         ::std::vec::Vec::push(
                             &mut capture_args,
-                            ::lady_deirdre::syntax::SyntaxSession::descend(session, 32u16),
+                            session.descend(
+                                /// FuncArg
+                                41u16,
+                            ),
                         );
                         state = 6usize;
                         continue;
@@ -907,7 +988,7 @@ impl CNode {
                             &mut capture_args,
                             ::lady_deirdre::syntax::NodeRef::nil(),
                         );
-                        site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
+                        site = session.site_ref(0);
                         ::lady_deirdre::syntax::SyntaxSession::error(
                             session,
                             ::lady_deirdre::syntax::SyntaxError {
@@ -917,7 +998,7 @@ impl CNode {
                                 expected_rules: &RULES_1,
                             },
                         );
-                        ::lady_deirdre::lexis::TokenCursor::advance(session);
+                        session.advance();
                         state = 7usize;
                         continue;
                     }
@@ -926,7 +1007,7 @@ impl CNode {
                             &mut capture_args,
                             ::lady_deirdre::syntax::NodeRef::nil(),
                         );
-                        site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
+                        site = session.site_ref(0);
                         ::lady_deirdre::syntax::SyntaxSession::error(
                             session,
                             ::lady_deirdre::syntax::SyntaxError {
@@ -936,16 +1017,16 @@ impl CNode {
                                 expected_rules: &RULES_1,
                             },
                         );
-                        ::lady_deirdre::lexis::TokenCursor::advance(session);
+                        session.advance();
                         continue;
                     }
-                    site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
+                    site = session.site_ref(0);
                     let mut recovered = ::lady_deirdre::syntax::Recovery::recover(
                         &::lady_deirdre::syntax::UNLIMITED_RECOVERY,
                         session,
                         &TOKENS_3,
                     );
-                    let end_site = ::lady_deirdre::lexis::TokenCursor::site_ref(session, 0);
+                    let end_site = session.site_ref(0);
                     ::lady_deirdre::syntax::SyntaxSession::error(
                         session,
                         ::lady_deirdre::syntax::SyntaxError {
@@ -960,29 +1041,34 @@ impl CNode {
                     }
                 }
                 11usize => {
-                    let token = ::lady_deirdre::lexis::TokenCursor::token(session, 0);
-                    if TokenSet::contains(&TOKENS_10, token as u8) {
-                        capture_next =
-                            ::lady_deirdre::syntax::SyntaxSession::descend(session, 4u16);
+                    let token = session.token(0);
+                    if TOKENS_10.contains(token as u8) {
+                        capture_next = session.descend(
+                            /// DefinitionValue
+                            4u16,
+                        );
                         break;
                     }
                     if token == CToken::POpen {
-                        capture_next =
-                            session.descend(31u16);
+                        capture_next = session.descend(
+                            /// FuncDef
+                            40u16,
+                        );
                         break;
                     }
                     site = session.site_ref(0);
-                    let mut recovered = lady_deirdre::syntax::Recovery::recover(
-                        &lady_deirdre::syntax::UNLIMITED_RECOVERY,
+                    let mut recovered = ::lady_deirdre::syntax::Recovery::recover(
+                        &::lady_deirdre::syntax::UNLIMITED_RECOVERY,
                         session,
                         &TOKENS_12,
                     );
                     let end_site = session.site_ref(0);
-                        session.error(
-                        SyntaxError {
+                    ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
+                        ::lady_deirdre::syntax::SyntaxError {
                             span: site..end_site,
                             context: 3u16,
-                            expected_tokens: &lady_deirdre::lexis::EMPTY_TOKEN_SET,
+                            expected_tokens: &::lady_deirdre::lexis::EMPTY_TOKEN_SET,
                             expected_rules: &RULES_4,
                         },
                     );
@@ -990,50 +1076,57 @@ impl CNode {
                         break;
                     }
                 }
-                12 => {
+                12usize => {
                     let token = session.token(0);
                     if token == CToken::Star {
-                        capture_func = session.token_ref(0);
+                        capture_func = ::lady_deirdre::lexis::TokenCursor::token_ref(
+                            session,
+                            0,
+                        );
                         session.advance();
-                        state = 3;
+                        state = 3usize;
                         continue;
                     }
                     if token == CToken::Ident {
                         site = session.site_ref(0);
-                            session.error(
-                            SyntaxError {
+                        ::lady_deirdre::syntax::SyntaxSession::error(
+                            session,
+                            ::lady_deirdre::syntax::SyntaxError {
                                 span: site..site,
                                 context: 3u16,
                                 expected_tokens: &TOKENS_11,
-                                expected_rules: &lady_deirdre::syntax::EMPTY_RULE_SET,
+                                expected_rules: &::lady_deirdre::syntax::EMPTY_RULE_SET,
                             },
                         );
-                        capture_name = session.token_ref(0);
+                        capture_name = ::lady_deirdre::lexis::TokenCursor::token_ref(
+                            session,
+                            0,
+                        );
                         session.advance();
-                        state = 4;
+                        state = 4usize;
                         continue;
                     }
                     site = session.site_ref(0);
-                    let mut recovered = 
-                        lady_deirdre::syntax::UNLIMITED_RECOVERY.recover(
+                    let mut recovered = ::lady_deirdre::syntax::Recovery::recover(
+                        &::lady_deirdre::syntax::UNLIMITED_RECOVERY,
                         session,
                         &TOKENS_11,
                     );
                     let end_site = session.site_ref(0);
-                
-                        session.error(
+                    ::lady_deirdre::syntax::SyntaxSession::error(
+                        session,
                         ::lady_deirdre::syntax::SyntaxError {
                             span: site..end_site,
                             context: 3u16,
                             expected_tokens: &TOKENS_11,
-                            expected_rules: &lady_deirdre::syntax::EMPTY_RULE_SET,
+                            expected_rules: &::lady_deirdre::syntax::EMPTY_RULE_SET,
                         },
                     );
                     if !recovered {
                         break;
                     }
                 }
-                other => unreachable!("Unknown state {other}."),
+                other => ::std::unreachable!("Unknown state {other}."),
             }
         }
         CNode::Definition {

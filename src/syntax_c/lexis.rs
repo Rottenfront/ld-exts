@@ -275,6 +275,9 @@ pub enum CToken {
     #[rule('#' $space* "define")]
     DefineDirective,
     #[priority(2)]
+    #[rule('#' $space* "undef")]
+    UnDefDirective,
+    #[priority(2)]
     #[rule('#' $space* "if")]
     IfDirective,
     #[priority(3)]
@@ -299,16 +302,16 @@ pub enum CToken {
     #[rule('#' $space* "endif")]
     EndIfDirective,
     #[priority(2)]
-    #[rule('#' $space* "pragma" (^['\\', '\n'] | ('\\' .))* '\n')]
+    #[rule('#' $space* "pragma" (^['\\', '\n'] | ('\\' .))* '\n'?)]
     PragmaDirective,
     #[priority(2)]
-    #[rule('#' $space* "error" (^['\\', '\n'] | ('\\' .))* '\n')]
+    #[rule('#' $space* "error" (^['\\', '\n'] | ('\\' .))* '\n'?)]
     ErrorDirective,
     #[priority(2)]
-    #[rule('#' $space* "warning" (^['\\', '\n'] | ('\\' .))* '\n')]
+    #[rule('#' $space* "warning" (^['\\', '\n'] | ('\\' .))* '\n'?)]
     WarnDirective,
     #[priority(2)]
-    #[rule('#' $space* "line" (^['\\', '\n'] | ('\\' .))* '\n')]
+    #[rule('#' $space* "line" (^['\\', '\n'] | ('\\' .))* '\n'?)]
     LineDirective,
 
     #[rule($space+)]
